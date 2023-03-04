@@ -1,6 +1,6 @@
+use clap::Parser;
 use std::path::PathBuf;
 
-use clap::Parser;
 use manual_analyzer::lexer::Lexer;
 
 /// A simple lexer for the ARM assembly language.
@@ -17,6 +17,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = std::fs::read_to_string(args.file)?;
     let lexer = Lexer::new(input);
     println!("{:#?}", lexer.lex());
-    
+
     Ok(())
 }

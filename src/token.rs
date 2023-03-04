@@ -14,7 +14,7 @@ impl Token {
             span: Span {
                 start: token_start,
                 end: token_end,
-            }
+            },
         }
     }
 }
