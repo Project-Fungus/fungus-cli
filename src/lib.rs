@@ -1,48 +1,8 @@
-use std::{
-    collections::HashMap,
-    hash::{BuildHasher, Hasher},
-};
+use std::collections::HashMap;
 
 mod fingerprint;
 pub mod lexer;
 mod token;
-
-struct IdentityHasher {
-    hash: u64,
-}
-
-impl IdentityHasher {
-    fn new() -> Self {
-        Self { hash: 0 }
-    }
-}
-
-impl Hasher for IdentityHasher {
-    fn finish(&self) -> u64 {
-        self.hash
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        for byte in bytes {
-            self.hash <<= 8;
-            self.hash |= *byte as u64;
-        }
-    }
-
-    fn write_u64(&mut self, i: u64) {
-        self.hash = i;
-    }
-}
-
-struct IdentityHasherBuilder;
-
-impl BuildHasher for IdentityHasherBuilder {
-    type Hasher = IdentityHasher;
-
-    fn build_hasher(&self) -> Self::Hasher {
-        IdentityHasher::new()
-    }
-}
 
 // Returns a list of matches represented as the indices in the input list
 // of the first and second occurrences of a match.
@@ -57,7 +17,7 @@ pub fn detect_plagiarism(documents: &[&str]) -> Vec<(usize, usize)> {
     let mut matches: Vec<(usize, usize)> = vec![];
 
     for (index, document) in documents.iter().enumerate() {
-        let fingerprint = fingerprint::fingerprint(K, T, document);
+        let fingerprint = fingerprint::fingerprint(K, T, document.chars().collect());
         for hash in fingerprint.hashes {
             match hashes_seen.get(&hash) {
                 Some(&first_index) if first_index == index => {}
