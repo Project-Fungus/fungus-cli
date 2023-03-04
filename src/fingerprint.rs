@@ -26,62 +26,30 @@ where
     // Generate the hashes of all valid k-grams in the document.
     // By hashing k-grams, we guarantee that no match shorter than k will be included in the
     // fingerprint.
-    // TODO: Hashing twice seems hacky, try to find a better way
-    let mut hasher = DefaultHasher::new();
-    let token_hashes = tokens
-        .iter()
-        .map(|t| hash_token(t, &mut hasher))
-        .collect::<Vec<_>>();
-    let hashes = hashes(k, &token_hashes);
+    let hashes = hash_tokens(tokens, k);
 
     choose_fingerprint(hashes, w)
 }
 
-fn hash_token<T, H>(token: &T, hasher: &mut H) -> u64
+fn hash_tokens<T>(tokens: Vec<T>, k: usize) -> Vec<u64>
+where
+    T: Hash,
+{
+    let mut hasher = DefaultHasher::new();
+
+    tokens
+        .windows(k)
+        .map(|w| hash_window(w, &mut hasher))
+        .collect()
+}
+
+fn hash_window<T, H>(tokens: &[T], hasher: &mut H) -> u64
 where
     T: Hash,
     H: Hasher,
 {
-    token.hash(hasher);
+    tokens.hash(hasher);
     hasher.finish()
-}
-
-/// Generates a 64-bit hash for all windows of bytes of length `k` in `bytes` using a rolling
-/// hash function.
-fn hashes(k: usize, token_hashes: &[u64]) -> Vec<u64> {
-    assert!(token_hashes.len() >= k);
-    assert!(k > 0);
-    assert!(u32::try_from(k).is_ok());
-
-    // B is a prime number greater than the maximum value for a byte
-    const B: u64 = 257;
-    let mut hashes = Vec::with_capacity(token_hashes.len() - k + 1);
-    let mut first_hash: u64 = 0;
-
-    for (i, &byte) in token_hashes[0..k].iter().enumerate() {
-        // acc + byte * B^(k - i)
-        first_hash =
-            first_hash.wrapping_add((u64::from(byte)).wrapping_mul(B.wrapping_pow((k - i) as u32)));
-    }
-
-    hashes.push(first_hash);
-
-    let mut last_hash = first_hash;
-    let mut next_byte_to_remove = token_hashes[0];
-
-    for i in k..token_hashes.len() {
-        let new_byte = token_hashes[i];
-        let new_hash = last_hash
-            .wrapping_sub(u64::from(next_byte_to_remove).wrapping_pow(k as u32))
-            .wrapping_add(u64::from(new_byte))
-            .wrapping_mul(k as u64);
-
-        last_hash = new_hash;
-        next_byte_to_remove = token_hashes[i - k + 1];
-        hashes.push(new_hash);
-    }
-
-    hashes
 }
 
 fn choose_fingerprint(hashes: Vec<u64>, w: usize) -> Fingerprint {
