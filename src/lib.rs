@@ -17,7 +17,8 @@ pub fn detect_plagiarism(documents: &[&str]) -> Vec<(usize, usize)> {
     let mut matches: Vec<(usize, usize)> = vec![];
 
     for (index, document) in documents.iter().enumerate() {
-        let fingerprint = fingerprint::fingerprint(K, T, document.chars().collect());
+        let characters = document.chars().collect();
+        let fingerprint = fingerprint::fingerprint(K, T, characters);
         for hash in fingerprint.hashes {
             match hashes_seen.get(&hash) {
                 Some(&first_index) if first_index == index => {}
@@ -50,15 +51,11 @@ mod tests {
 
     #[test]
     fn simple_sentences() {
-        let sentences = vec![
-            "aaaaaaaaaa bbbbbbbbbb ccccc dddd",
-            "bbbbbbbbbb asdfjhaksjhdf",
-            "aslkdafhskjfhd aaaaaaaaaa",
-            "asdfjkhaskdjhf cccc",
-            "dddd askldfjhaskjfdh",
-        ];
+        let strings = vec!["aaaaaaaaa bbbbbbbbb", "bbbbbbbbb aaaaaaaaa", "aaaa c bbbb"];
+        let matches = detect_plagiarism(&strings);
 
-        let matches = detect_plagiarism(&sentences);
-        assert_eq!(matches, vec![(0, 1), (0, 2)]);
+        assert!(matches.contains(&(0, 1)));
+        assert!(!matches.contains(&(0, 2)));
+        assert!(!matches.contains(&(1, 2)));
     }
 }

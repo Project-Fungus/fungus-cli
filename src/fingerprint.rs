@@ -35,20 +35,15 @@ fn hash_tokens<T>(tokens: Vec<T>, k: usize) -> Vec<u64>
 where
     T: Hash,
 {
-    let mut hasher = DefaultHasher::new();
-
-    tokens
-        .windows(k)
-        .map(|w| hash_window(w, &mut hasher))
-        .collect()
+    tokens.windows(k).map(|w| hash_window(w)).collect()
 }
 
-fn hash_window<T, H>(tokens: &[T], hasher: &mut H) -> u64
+fn hash_window<T>(tokens: &[T]) -> u64
 where
     T: Hash,
-    H: Hasher,
 {
-    tokens.hash(hasher);
+    let mut hasher = DefaultHasher::new();
+    tokens.hash(&mut hasher);
     hasher.finish()
 }
 
