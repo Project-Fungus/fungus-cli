@@ -1,6 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use identity_hash::IdentityHashMap;
+use rustc_hash::FxHashSet as HashSet;
 
 mod fingerprint;
+mod identity_hash;
 pub mod lexer;
 mod token;
 
@@ -15,11 +17,10 @@ pub fn detect_plagiarism(
     documents: &[&str],
 ) -> Vec<(usize, usize)> {
     // Maps a hash to the index of the document in which it was first seen
-    // TODO: Could use the hashes directly instead of re-hashing them.
-    let mut hashes_seen: HashMap<u64, usize> = HashMap::new();
+    let mut hashes_seen: IdentityHashMap<usize> = IdentityHashMap::default();
 
     // Keep matches in a hash set so that matches are not reported multiple times.
-    let mut matches: HashSet<(usize, usize)> = HashSet::new();
+    let mut matches: HashSet<(usize, usize)> = HashSet::default();
 
     for (index, document) in documents.iter().enumerate() {
         // TODO: Figure out why using the string bytes directly doesn't work. (Would reduce runtime by ~30% for the Moby Dick test).
