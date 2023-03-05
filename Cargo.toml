@@ -12,3 +12,18 @@ rustc-hash = "1.1.0"
 [[bin]]
 name = "fungus"
 path = "src/main.rs"
+
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+
+[[bench]]
+name = "bytes_or_chars"
+harness = false
+
+[[bench]]
+name = "database_rehashing"
+harness = false
+
+# Used by `cargo flamegraph` to get better profiling results.
+[profile.bench]
+debug = true

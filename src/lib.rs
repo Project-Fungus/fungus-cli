@@ -1,8 +1,8 @@
 use identity_hash::IdentityHashMap;
 use rustc_hash::FxHashSet as HashSet;
 
-mod fingerprint;
-mod identity_hash;
+pub mod fingerprint;
+pub mod identity_hash;
 pub mod lexer;
 mod token;
 
@@ -23,8 +23,8 @@ pub fn detect_plagiarism(
     let mut matches: HashSet<(usize, usize)> = HashSet::default();
 
     for (index, document) in documents.iter().enumerate() {
-        // TODO: Figure out why using the string bytes directly doesn't work. (Would reduce runtime by ~30% for the Moby Dick test).
-        let characters = document.chars().collect();
+        // Use bytes instead of chars since it shouldn't affect the result and is faster.
+        let characters = document.bytes().collect();
 
         let fingerprint =
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);
@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn moby_dick() {
-        let moby_dick = include_str!("moby_dick.txt");
+        let moby_dick = include_str!("../benches/moby_dick.txt");
 
         // Split Moby Dick into its chapters
         let chapters = moby_dick.split("CHAPTER").collect::<Vec<_>>();
