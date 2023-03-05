@@ -11,6 +11,8 @@ pub struct Fingerprint {
 ///
 /// Substrings with length at least `t` are guaranteed to be captured in the fingerprint.
 /// Substrings with length less than `k` are excluded from the fingerprint.
+///
+/// If the same hash occurs multiple times in a row, it will only be returned once.
 pub fn fingerprint<T>(k: usize, t: usize, tokens: &[T]) -> Fingerprint
 where
     T: Hash,
@@ -25,7 +27,10 @@ where
     // Generate the hashes of all valid k-grams in the document.
     // By hashing k-grams, we guarantee that no match shorter than k will be included in the
     // fingerprint.
-    let hashes = tokens.windows(k).map(|w| hash_window(w)).collect::<Vec<_>>();
+    let hashes = tokens
+        .windows(k)
+        .map(|w| hash_window(w))
+        .collect::<Vec<_>>();
 
     choose_fingerprint(&hashes, w)
 }
@@ -35,6 +40,8 @@ fn hash_window<T>(tokens: &[T]) -> u64
 where
     T: Hash,
 {
+    // IMPORTANT: create a new hasher each time because hasher.finish() does NOT
+    // clear the hasher, it only returns the hash.
     let mut hasher = FxHasher::default();
     tokens.hash(&mut hasher);
     hasher.finish()
@@ -69,7 +76,8 @@ mod fingerprint_tests {
 
     #[test]
     fn moss_example() {
-        // Example from page 4 of the MOSS paper adapted for robust winnowing.
+        // Example from page 4 of the MOSS paper adapted for robust winnowing
+        // (as well as removing identical back-to-back hashes)
         let hashes = vec![
             77, 74, 42, 17, 98, 50, 17, 98, 8, 88, 67, 39, 77, 74, 42, 17, 98,
         ];
