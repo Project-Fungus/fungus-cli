@@ -11,7 +11,7 @@ pub struct Fingerprint {
 ///
 /// Substrings with length at least `t` are guaranteed to be captured in the fingerprint.
 /// Substrings with length less than `k` are excluded from the fingerprint.
-pub fn fingerprint<T>(k: usize, t: usize, tokens: Vec<T>) -> Fingerprint
+pub fn fingerprint<T>(k: usize, t: usize, tokens: &[T]) -> Fingerprint
 where
     T: Hash,
 {
@@ -25,18 +25,12 @@ where
     // Generate the hashes of all valid k-grams in the document.
     // By hashing k-grams, we guarantee that no match shorter than k will be included in the
     // fingerprint.
-    let hashes = hash_tokens(tokens, k);
+    let hashes = tokens.windows(k).map(|w| hash_window(w)).collect::<Vec<_>>();
 
-    choose_fingerprint(hashes, w)
+    choose_fingerprint(&hashes, w)
 }
 
-fn hash_tokens<T>(tokens: Vec<T>, k: usize) -> Vec<u64>
-where
-    T: Hash,
-{
-    tokens.windows(k).map(|w| hash_window(w)).collect()
-}
-
+#[inline]
 fn hash_window<T>(tokens: &[T]) -> u64
 where
     T: Hash,
@@ -46,7 +40,7 @@ where
     hasher.finish()
 }
 
-fn choose_fingerprint(hashes: Vec<u64>, w: usize) -> Fingerprint {
+fn choose_fingerprint(hashes: &[u64], w: usize) -> Fingerprint {
     let mut fingerprint_hashes = vec![];
     let mut previously_picked_hash = None;
 
@@ -54,8 +48,6 @@ fn choose_fingerprint(hashes: Vec<u64>, w: usize) -> Fingerprint {
         let &min_hash = window.iter().min().unwrap();
 
         match previously_picked_hash {
-            // If the previously-picked hash is still in this window and the new
-            // value is not lower, then just keep the old value
             Some(previously_picked_hash) if previously_picked_hash == min_hash => {
                 // Do nothing. There's no point in storing the same hash twice in the fingerprint.
             }
@@ -82,7 +74,7 @@ mod fingerprint_tests {
             77, 74, 42, 17, 98, 50, 17, 98, 8, 88, 67, 39, 77, 74, 42, 17, 98,
         ];
         let w = 4;
-        let fingerprint = choose_fingerprint(hashes, w);
+        let fingerprint = choose_fingerprint(&hashes, w);
         assert_eq!(fingerprint.hashes, vec![17, 8, 39, 17]);
     }
 
@@ -90,7 +82,7 @@ mod fingerprint_tests {
     fn identical_hashes() {
         let hashes = vec![1, 1, 1, 1, 1];
         let w = 2;
-        let fingerprint = choose_fingerprint(hashes, w);
+        let fingerprint = choose_fingerprint(&hashes, w);
         assert_eq!(fingerprint.hashes, vec![1]);
     }
 }

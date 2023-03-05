@@ -18,7 +18,7 @@ fn detect_plagiarism_rehashing_default(
 
     for (index, document) in documents.iter().enumerate() {
         // Use bytes instead of chars since it shouldn't affect the result and is faster.
-        let characters = document.bytes().collect();
+        let characters = document.as_bytes();
 
         let fingerprint =
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);
@@ -55,7 +55,7 @@ fn detect_plagiarism_rehashing_rustc_hash(
 
     for (index, document) in documents.iter().enumerate() {
         // Use bytes instead of chars since it shouldn't affect the result and is faster.
-        let characters = document.bytes().collect();
+        let characters = document.as_bytes();
 
         let fingerprint =
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);
@@ -92,7 +92,7 @@ fn detect_plagiarism_no_rehashing(
 
     for (index, document) in documents.iter().enumerate() {
         // Use bytes instead of chars since it shouldn't affect the result and is faster.
-        let characters = document.bytes().collect();
+        let characters = document.as_bytes();
 
         let fingerprint =
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);

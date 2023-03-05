@@ -24,6 +24,10 @@ harness = false
 name = "database_rehashing"
 harness = false
 
+[[bench]]
+name = "fingerprint"
+harness = false
+
 # Used by `cargo flamegraph` to get better profiling results.
-[profile.bench]
-debug = true
+# [profile.bench]
+# debug = true
