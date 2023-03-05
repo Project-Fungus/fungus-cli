@@ -50,22 +50,18 @@ fn choose_fingerprint(hashes: Vec<u64>, w: usize) -> Fingerprint {
     let mut fingerprint_hashes = vec![];
     let mut previously_picked_hash = None;
 
-    for window_start in 0..=(hashes.len() - w) {
-        let max_idx_in_window = window_start + w - 1;
-        let mut min_hash = (hashes[max_idx_in_window], max_idx_in_window);
-        for i in (window_start..=max_idx_in_window).rev() {
-            if hashes[i] < min_hash.0 {
-                min_hash = (hashes[i], i);
-            }
-        }
+    for window in hashes.windows(w) {
+        let &min_hash = window.iter().min().unwrap();
 
         match previously_picked_hash {
             // If the previously-picked hash is still in this window and the new
             // value is not lower, then just keep the old value
-            Some((v, i)) if i >= window_start && v <= min_hash.0 => {}
+            Some(previously_picked_hash) if previously_picked_hash == min_hash => {
+                // Do nothing. There's no point in storing the same hash twice in the fingerprint.
+            }
             _ => {
                 previously_picked_hash = Some(min_hash);
-                fingerprint_hashes.push(min_hash.0);
+                fingerprint_hashes.push(min_hash);
             }
         }
     }
@@ -81,13 +77,13 @@ mod fingerprint_tests {
 
     #[test]
     fn moss_example() {
-        // Example from page 4 of the MOSS paper
+        // Example from page 4 of the MOSS paper adapted for robust winnowing.
         let hashes = vec![
             77, 74, 42, 17, 98, 50, 17, 98, 8, 88, 67, 39, 77, 74, 42, 17, 98,
         ];
         let w = 4;
         let fingerprint = choose_fingerprint(hashes, w);
-        assert_eq!(fingerprint.hashes, vec![17, 17, 8, 39, 17]);
+        assert_eq!(fingerprint.hashes, vec![17, 8, 39, 17]);
     }
 
     #[test]
@@ -95,6 +91,6 @@ mod fingerprint_tests {
         let hashes = vec![1, 1, 1, 1, 1];
         let w = 2;
         let fingerprint = choose_fingerprint(hashes, w);
-        assert_eq!(fingerprint.hashes, vec![1, 1]);
+        assert_eq!(fingerprint.hashes, vec![1]);
     }
 }
