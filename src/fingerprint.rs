@@ -1,7 +1,6 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-};
+use std::hash::{Hash, Hasher};
+
+use rustc_hash::FxHasher;
 
 pub struct Fingerprint {
     pub hashes: Vec<u64>,
@@ -42,7 +41,7 @@ fn hash_window<T>(tokens: &[T]) -> u64
 where
     T: Hash,
 {
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = FxHasher::default();
     tokens.hash(&mut hasher);
     hasher.finish()
 }
