@@ -64,8 +64,8 @@ mod tests {
 
     #[test]
     fn simple_sentences() {
-        let strings = vec!["aaaaaaaaa bbbbbbbbb", "bbbbbbbbb aaaaaaaaa", "aaaa c bbbb"];
-        let matches = detect_plagiarism(5, 9, &strings);
+        let strings = vec!["aaabbb", "bbbaaa", "acb"];
+        let matches = detect_plagiarism(2, 3, &strings);
 
         assert_eq!(matches, vec![(0, 1)]);
     }
