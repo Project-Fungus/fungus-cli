@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::Parser;
 use std::{
     fs::{self, DirEntry},
@@ -36,7 +37,9 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
     }
 
-    let projects = fs::read_dir(args.root)?.collect::<Result<Vec<_>, _>>()?;
+    let projects = fs::read_dir(&args.root)
+        .with_context(|| format!("Failed to read directory entries at {:?}", &args.root))?
+        .collect::<Result<Vec<_>, _>>()?;
 
     let project_contents = projects
         .iter()
@@ -62,19 +65,24 @@ fn main() -> anyhow::Result<()> {
 /// Returns the contents of all files in the given directory concatenated
 /// together. If the given path is not a directory, then None is returned.
 // TODO: Replace with a library like `walkdir`.
-fn get_contents(path: &DirEntry) -> Result<String, io::Error> {
-    let metadata = path.metadata()?;
+fn get_contents(path: &DirEntry) -> anyhow::Result<String> {
+    let metadata = path
+        .metadata()
+        .with_context(|| format!("Failed to read directory entry metadata at {:?}", path))?;
 
     if metadata.is_dir() {
         let mut contents = String::new();
-        for child in fs::read_dir(path.path())? {
+        for child in fs::read_dir(path.path())
+            .with_context(|| format!("Failed to read directory entries at {:?}", path.path()))?
+        {
             let child = child?;
             let child_contents = get_contents(&child)?;
             contents += &child_contents;
         }
         Ok(contents)
     } else {
-        let contents = std::fs::read_to_string(path.path())?;
+        let contents = std::fs::read_to_string(path.path())
+            .with_context(|| format!("Failed to parse \"{:?}\" as UTF-8", path.path()))?;
         Ok(contents)
     }
 }
