@@ -2,7 +2,6 @@ use anyhow::Context;
 use clap::Parser;
 use std::{
     fs::{self, DirEntry},
-    io,
     path::PathBuf,
 };
 
@@ -13,8 +12,7 @@ use manual_analyzer::detect_plagiarism;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Directory in which to search for code.
-    #[arg(short, long, default_value = ".")]
-    root: PathBuf,
+    projects: PathBuf,
     /// Noise threshold. Matches whose length is less than this value will not be flagged.
     #[arg(short, long, default_value_t = 5)]
     noise: usize,
@@ -37,8 +35,8 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
     }
 
-    let projects = fs::read_dir(&args.root)
-        .with_context(|| format!("Failed to read directory entries at {:?}", &args.root))?
+    let projects = fs::read_dir(&args.projects)
+        .with_context(|| format!("Failed to read directory entries at {:?}", &args.projects))?
         .collect::<Result<Vec<_>, _>>()?;
 
     let project_contents = projects
