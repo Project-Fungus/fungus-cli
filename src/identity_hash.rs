@@ -1,5 +1,5 @@
-//! Hasher, HashMap, and HashSet which use the passed-in value directly as the hash.
-//! This is useful for using precomputed hashes as keys to a HashMap or HashSet.
+//! `Hasher`, `HashMap`, and `HashSet` which use the passed-in value directly as the hash.
+//! This is useful for using precomputed hashes as keys to a `HashMap` or `HashSet`.
 //!
 //! # Example
 //!
@@ -18,6 +18,10 @@ use std::{
 };
 
 /// Hasher which simply returns the passed-in value. To be used exclusively with u64 values, panics otherwise.
+///
+/// # Panics
+///
+/// Panics if any method other than `write_u64` is called.
 #[derive(Default)]
 pub struct IdentityHasher {
     hash: u64,
@@ -29,6 +33,7 @@ impl Hasher for IdentityHasher {
         self.hash
     }
 
+    #[inline]
     fn write(&mut self, _bytes: &[u8]) {
         panic!("IdentityHasher should only be used with u64 values")
     }

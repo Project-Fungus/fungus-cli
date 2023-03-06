@@ -13,6 +13,11 @@ pub struct Fingerprint {
 /// Substrings with length less than `k` are excluded from the fingerprint.
 ///
 /// If the same hash occurs multiple times in a row, it will only be returned once.
+///
+/// # Panics
+///
+/// Panics if `k` is greater than `t` or if `k` is 0.
+#[inline]
 pub fn fingerprint<T>(k: usize, t: usize, tokens: &[T]) -> Fingerprint
 where
     T: Hash,

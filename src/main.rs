@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::{
     fs::{self, DirEntry},
+    io,
     path::PathBuf,
 };
 
@@ -24,42 +25,34 @@ struct Args {
     lex: bool,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let projects = fs::read_dir(args.root)?
-        .map(|x| x.unwrap())
-        .collect::<Vec<_>>();
+    if args.noise == 0 {
+        anyhow::bail!("Noise threshold must be greater than 0.");
+    }
+
+    if args.guarantee < args.noise {
+        anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
+    }
+
+    let projects = fs::read_dir(args.root)?.collect::<Result<Vec<_>, _>>()?;
+
     let project_contents = projects
         .iter()
-        .map(|x| get_contents(&x))
-        .filter(|x| x.is_ok())
-        .map(|x| x.unwrap())
-        .collect::<Vec<_>>();
+        .map(get_contents)
+        .collect::<Result<Vec<_>, _>>()?;
 
-    let project_contents_borrowed = project_contents
-        .iter()
-        .map(AsRef::as_ref)
-        .collect::<Vec<_>>();
+    let matches = detect_plagiarism(args.noise, args.guarantee, args.lex, &project_contents);
 
-    let mut matches = detect_plagiarism(
-        args.noise,
-        args.guarantee,
-        args.lex,
-        &project_contents_borrowed,
-    );
-
-    matches.sort();
-    matches.dedup();
-
-    if matches.len() == 0 {
+    if matches.is_empty() {
         println!("No matches found.");
     } else {
         println!("The following projects have at least one match:");
-        for (i, j) in matches.iter() {
-            let first = projects.get(*i).unwrap().path();
-            let second = projects.get(*j).unwrap().path();
-            println!("{}, {}", first.to_str().unwrap(), second.to_str().unwrap());
+        for (i, j) in matches {
+            let first = projects[i].path();
+            let second = projects[j].path();
+            println!("{first:?}, {second:?}");
         }
     }
 
@@ -68,7 +61,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Returns the contents of all files in the given directory concatenated
 /// together. If the given path is not a directory, then None is returned.
-fn get_contents(path: &DirEntry) -> Result<String, Box<dyn std::error::Error>> {
+// TODO: Replace with a library like `walkdir`.
+fn get_contents(path: &DirEntry) -> Result<String, io::Error> {
     let metadata = path.metadata()?;
 
     if metadata.is_dir() {

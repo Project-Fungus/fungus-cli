@@ -12,13 +12,14 @@ mod token;
 ///
 /// Matches of length less than `noise_threshold` are guaranteed to be ignored.
 /// Matches of length at least `guarantee_threshold` are guaranteed to be included.
-pub fn detect_plagiarism(
+pub fn detect_plagiarism<S: AsRef<str>>(
     noise_threshold: usize,
     guarantee_threshold: usize,
     should_lex: bool,
-    documents: &[&str],
+    documents: &[S],
 ) -> Vec<(usize, usize)> {
     // Maps a hash to the index of the document in which it was first seen
+    // To prevent rehashing the hashes, we use a hash map which does not rehash the keys.
     let mut hashes_seen: IdentityHashMap<usize> = IdentityHashMap::default();
 
     // Keep matches in a hash set so that matches are not reported multiple times.
@@ -26,12 +27,11 @@ pub fn detect_plagiarism(
 
     for (index, document) in documents.iter().enumerate() {
         let fingerprint = if should_lex {
-            let tokens = Lexer::new(document.to_string()).lex();
+            let tokens = Lexer::new(document.as_ref()).lex();
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
-
         } else {
             // Use bytes instead of chars since it shouldn't affect the result and is faster.
-            let characters = document.as_bytes();
+            let characters = document.as_ref().as_bytes();
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters)
         };
 
@@ -49,7 +49,7 @@ pub fn detect_plagiarism(
     }
 
     let mut matches: Vec<_> = matches.into_iter().collect();
-    matches.sort();
+    matches.sort_unstable();
 
     matches
 }

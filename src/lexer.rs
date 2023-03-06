@@ -1,11 +1,11 @@
 use crate::token::{Token, TokenKind};
 
-pub struct Lexer {
-    input: String,
+pub struct Lexer<'input> {
+    input: &'input str,
 }
 
-impl Lexer {
-    pub fn new(input: String) -> Lexer {
+impl<'input> Lexer<'input> {
+    pub fn new(input: &str) -> Lexer {
         Lexer { input }
     }
 
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn a_simple_line() {
         let input = "add r0, r1".to_string();
-        let lexer = Lexer::new(input);
+        let lexer = Lexer::new(&input);
         assert_eq!(
             lexer.lex(),
             vec![
@@ -94,13 +94,13 @@ mod tests {
                 Token::new(TokenKind::Whitespace, 7, 7),
                 Token::new(TokenKind::Word, 8, 9),
             ]
-        )
+        );
     }
 
     #[test]
     fn a_line_with_comments() {
         let input = "add r0, r1 @ This is a comment".to_string();
-        let lexer = Lexer::new(input);
+        let lexer = Lexer::new(&input);
         assert_eq!(
             lexer.lex(),
             vec![
@@ -113,13 +113,13 @@ mod tests {
                 Token::new(TokenKind::Whitespace, 10, 10),
                 Token::new(TokenKind::Comment, 11, 29),
             ]
-        )
+        );
     }
 
     #[test]
     fn a_label() {
         let input: String = "label: add r0, r1".to_string();
-        let lexer = Lexer::new(input);
+        let lexer = Lexer::new(&input);
         assert_eq!(
             lexer.lex(),
             vec![
@@ -133,6 +133,6 @@ mod tests {
                 Token::new(TokenKind::Whitespace, 14, 14),
                 Token::new(TokenKind::Word, 15, 16),
             ]
-        )
+        );
     }
 }
