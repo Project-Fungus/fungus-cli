@@ -1,7 +1,7 @@
 use std::usize;
 
 /// ARM assembly tokens
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
@@ -30,14 +30,14 @@ impl PartialEq for Token {
 }
 
 /// Span of the token in the source string, both ends inclusive
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
 }
 
 /// Kinds of ARM assembly tokens including whitespace and comments
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq)]
 pub enum TokenKind {
     /// A sequence of whitespace including newlines
     Whitespace,

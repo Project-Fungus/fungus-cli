@@ -19,6 +19,9 @@ struct Args {
     /// Guarantee threshold. Matches at least as long as this value are guaranteed to be flagged.
     #[arg(short, long, default_value_t = 10)]
     guarantee: usize,
+    /// Whether to tokenize the documents before fingerprinting.
+    #[arg(short, long)]
+    lex: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,7 +42,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(AsRef::as_ref)
         .collect::<Vec<_>>();
 
-    let mut matches = detect_plagiarism(args.noise, args.guarantee, &project_contents_borrowed);
+    let mut matches = detect_plagiarism(
+        args.noise,
+        args.guarantee,
+        args.lex,
+        &project_contents_borrowed,
+    );
 
     matches.sort();
     matches.dedup();

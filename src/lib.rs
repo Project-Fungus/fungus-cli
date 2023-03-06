@@ -1,4 +1,5 @@
 use identity_hash::IdentityHashMap;
+use lexer::Lexer;
 use rustc_hash::FxHashSet as HashSet;
 
 pub mod fingerprint;
@@ -14,6 +15,7 @@ mod token;
 pub fn detect_plagiarism(
     noise_threshold: usize,
     guarantee_threshold: usize,
+    should_lex: bool,
     documents: &[&str],
 ) -> Vec<(usize, usize)> {
     // Maps a hash to the index of the document in which it was first seen
@@ -23,11 +25,15 @@ pub fn detect_plagiarism(
     let mut matches: HashSet<(usize, usize)> = HashSet::default();
 
     for (index, document) in documents.iter().enumerate() {
-        // Use bytes instead of chars since it shouldn't affect the result and is faster.
-        let characters = document.as_bytes();
+        let fingerprint = if should_lex {
+            let tokens = Lexer::new(document.to_string()).lex();
+            fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
 
-        let fingerprint =
-            fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);
+        } else {
+            // Use bytes instead of chars since it shouldn't affect the result and is faster.
+            let characters = document.as_bytes();
+            fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters)
+        };
 
         for hash in fingerprint.hashes {
             match hashes_seen.get(&hash) {
@@ -58,14 +64,14 @@ mod tests {
 
         // Split Moby Dick into its chapters
         let chapters = moby_dick.split("CHAPTER").collect::<Vec<_>>();
-        let matches = detect_plagiarism(25, 50, &chapters);
+        let matches = detect_plagiarism(25, 50, false, &chapters);
         println!("{} matches found!", matches.len());
     }
 
     #[test]
     fn simple_sentences() {
         let strings = vec!["aaabbb", "bbbaaa", "acb"];
-        let matches = detect_plagiarism(2, 3, &strings);
+        let matches = detect_plagiarism(2, 3, false, &strings);
 
         assert_eq!(matches, vec![(0, 1)]);
     }
