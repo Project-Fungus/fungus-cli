@@ -1,7 +1,9 @@
+//! ARM assembly tokens
 use std::usize;
 
 /// ARM assembly tokens
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Hash)]
+// FIXME: impl Hash and PartialEq properly, probably change span to include the &str since it won't work otherwise
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
@@ -14,30 +16,20 @@ impl Token {
             span: Span {
                 start: token_start,
                 end: token_end,
-            }
-        }
-    }
-}
-
-impl PartialEq for Token {
-    fn eq(&self, other: &Self) -> bool {
-        // When comparing whitespace tokens, treat all whitespace as equal
-        match (self.kind, other.kind) {
-            (TokenKind::Whitespace, TokenKind::Whitespace) => true,
-            _ => self.kind == other.kind && self.span == other.span,
+            },
         }
     }
 }
 
 /// Span of the token in the source string, both ends inclusive
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
 }
 
 /// Kinds of ARM assembly tokens including whitespace and comments
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq)]
 pub enum TokenKind {
     /// A sequence of whitespace including newlines
     Whitespace,
