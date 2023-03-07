@@ -66,7 +66,7 @@ fn main() -> anyhow::Result<()> {
 fn get_contents(path: &DirEntry) -> anyhow::Result<String> {
     let metadata = path
         .metadata()
-        .with_context(|| format!("Failed to read directory entry metadata at {:?}", path))?;
+        .with_context(|| format!("Failed to read directory entry metadata at {path:?}"))?;
 
     if metadata.is_dir() {
         let mut contents = String::new();

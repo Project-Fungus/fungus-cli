@@ -44,5 +44,7 @@ impl Hasher for IdentityHasher {
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub type IdentityHashMap<V> = HashMap<u64, V, BuildHasherDefault<IdentityHasher>>;
+#[allow(clippy::module_name_repetitions)]
 pub type IdentityHashSet = HashSet<u64, BuildHasherDefault<IdentityHasher>>;
