@@ -4,7 +4,7 @@ use logos::{Lexer, Logos};
 
 // Implemented using information from the [GNU assembler documentation](https://sourceware.org/binutils/docs/as/)
 // and the [ARM developer documentation](https://developer.arm.com/documentation/).
-#[derive(Logos, Debug, PartialEq, Hash)]
+#[derive(Logos, Debug, PartialEq, Eq, Hash)]
 pub enum Token<'source> {
     #[error]
     Error,
@@ -126,6 +126,7 @@ pub enum Token<'source> {
     Colon,
 }
 
+#[must_use]
 pub fn lex(s: &str) -> Vec<Token> {
     let lexer = Token::lexer(s);
     lexer.collect()
