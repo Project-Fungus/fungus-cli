@@ -238,4 +238,9 @@ mod tests {
             vec![FloatingPoint(HashableFloat(-1.45e2))]
         );
     }
+
+    #[test]
+    fn lex_radix_sort() {
+        assert!(!lex(include_str!("../benches/radix_sort.s")).contains(&Error))
+    }
 }
