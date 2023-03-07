@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.69"
 clap = { version = "4.1.4", features = ["derive"] }
+logos = "0.12.1"
 rustc-hash = "1.1.0"
 
 [[bin]]
@@ -27,6 +28,10 @@ harness = false
 
 [[bench]]
 name = "fingerprint"
+harness = false
+
+[[bench]]
+name = "lexing"
 harness = false
 
 # Used by `cargo flamegraph` to get better profiling results.
