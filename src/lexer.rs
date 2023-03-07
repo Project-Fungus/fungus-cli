@@ -57,6 +57,7 @@ pub enum Token<'source> {
     #[token(",")]
     Comma,
 
+    // TODO: Note that this representation for registers is only valid for ARMv7, ARMv8 uses x0-x30, w0-w30, and some more special registers
     #[regex(r"(?imx) r\d+ # r0-r15", parse_register)]
     #[regex(r"(?imx) sp", |_| 13)]
     #[regex(r"(?imx) lr", |_| 14)]
