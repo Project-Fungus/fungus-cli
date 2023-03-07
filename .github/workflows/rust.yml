@@ -2,16 +2,15 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -21,6 +20,6 @@ jobs:
       - name: Run tests
         run: cargo test
       - name: Lint
-        run: cargo clippy -- -Dclippy::complexity -Dclippy::perf -Dclippy::suspicious -Dclippy::style
+        run: cargo clippy -- -Dclippy::complexity -Dclippy::perf -Dclippy::suspicious -Dclippy::style -Dclippy::pedantic -Dclippy::cargo -Dclippy::nursery
       - name: Format
         run: cargo fmt --check
