@@ -5,7 +5,7 @@
 //!
 //! ```rust
 //! # fn main() {
-//! use identity_hash::{IdentityHashMap, IdentityHashSet};
+//! use manual_analyzer::identity_hash::{IdentityHashMap, IdentityHashSet};
 //! let mut map: IdentityHashMap<u32> = IdentityHashMap::default();
 //! map.insert(22, 44);
 //! let mut set: IdentityHashSet = IdentityHashSet::default();
