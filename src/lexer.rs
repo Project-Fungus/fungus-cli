@@ -263,6 +263,14 @@ mod tests {
     }
 
     #[test]
+    fn test_different_symbols_hash_differently() {
+        let mut set = std::collections::HashSet::new();
+        set.insert(Symbol("add"));
+        set.insert(Symbol("sub"));
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
     fn lex_radix_sort() {
         assert!(!lex(include_str!("../benches/radix_sort.s")).contains(&Error))
     }
