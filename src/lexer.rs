@@ -23,10 +23,10 @@ pub enum Token<'source> {
     #[regex(r"(?imx) @ [^\n]*", parse_single_char_line_comment)]
     Comment(&'source str),
 
-    #[regex(r"(?imx) [a-zA-Z_.$][a-zA-Z0-9_.$]*")]
-    #[regex(r#"(?imx) " (?: [^"] | \\. )* " "#)]
+    #[regex(r"(?imx) [a-zA-Z_.$][a-zA-Z0-9_.$]*", parse_unquoted_symbol)]
+    #[regex(r#"(?imx) " (?: [^"] | \\. )* " "#, parse_quoted_symbol)]
     // Also used to represent string literals
-    Symbol(&'source str),
+    Symbol(String),
 
     // A label is a symbol followed by a colon
     #[regex(r"(?imx) [a-zA-Z_.$][a-zA-Z0-9_.$]*:")]
@@ -157,6 +157,17 @@ fn parse_single_char_line_comment<'source>(
 }
 
 #[inline]
+fn parse_unquoted_symbol<'source>(lex: &mut Lexer<'source, Token<'source>>) -> String {
+    lex.slice().to_ascii_lowercase()
+}
+
+#[inline]
+fn parse_quoted_symbol<'source>(lex: &mut Lexer<'source, Token<'source>>) -> String {
+    let s = lex.slice();
+    s[1..s.len() - 1].to_ascii_lowercase()
+}
+
+#[inline]
 fn parse_binary_integer<'source>(lex: &mut Lexer<'source, Token<'source>>) -> i64 {
     i64::from_str_radix(&lex.slice()[2..], 2).unwrap()
 }
@@ -241,11 +252,11 @@ mod tests {
 
     #[test]
     fn test_instruction() {
-        assert_eq!(lex("add"), vec![Symbol("add")]);
-        assert_eq!(lex("addne"), vec![Symbol("addne")]);
+        assert_eq!(lex("add"), vec![Symbol("add".to_owned())]);
+        assert_eq!(lex("addne"), vec![Symbol("addne".to_owned())]);
         assert_eq!(
             lex("YIELDS R0"),
-            vec![Symbol("YIELDS"), Whitespace, Register(0)]
+            vec![Symbol("yields".to_owned()), Whitespace, Register(0)]
         );
     }
 
@@ -265,8 +276,8 @@ mod tests {
     #[test]
     fn test_different_symbols_hash_differently() {
         let mut set = std::collections::HashSet::new();
-        set.insert(Symbol("add"));
-        set.insert(Symbol("sub"));
+        set.insert(Symbol("add".to_owned()));
+        set.insert(Symbol("sub".to_owned()));
         assert_eq!(set.len(), 2);
     }
 
