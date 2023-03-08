@@ -9,7 +9,8 @@ pub enum Token<'source> {
     #[error]
     Error,
 
-    #[regex(r"(?imx) [\s && [^\n]]+ # all whitespace except for newlines")]
+    // All whitespace except for newlines
+    #[regex(r"(?imx) [\s && [^\n]]+")]
     Whitespace,
 
     #[token("\n")]
@@ -19,7 +20,6 @@ pub enum Token<'source> {
 
     #[regex(r"(?imx) /\* (?: [^\*] | \*[^/] )* \*/", parse_multiline_comment)]
     #[regex(r"(?imx) // [^\n]*", parse_cstyle_line_comment)]
-    #[regex(r"(?imx) # [^\n]*", parse_single_char_line_comment)]
     #[regex(r"(?imx) @ [^\n]*", parse_single_char_line_comment)]
     Comment(&'source str),
 
@@ -58,9 +58,12 @@ pub enum Token<'source> {
     Comma,
 
     // TODO: Note that this representation for registers is only valid for ARMv7, ARMv8 uses x0-x30, w0-w30, and some more special registers
-    #[regex(r"(?imx) r\d+ # r0-r15", parse_register)]
-    #[regex(r"(?imx) a\d # a1-a4", parse_a_register)]
-    #[regex(r"(?imx) v\d # v1-v8", parse_v_register)]
+    // r0-r15
+    #[regex(r"(?imx) r\d+", parse_register)]
+    // a1-a4
+    #[regex(r"(?imx) a\d", parse_a_register)]
+    // v1-v8
+    #[regex(r"(?imx) v\d", parse_v_register)]
     #[regex(r"(?imx) tr | sb", |_| 9)]
     #[regex(r"(?imx) ip", |_| 12)]
     #[regex(r"(?imx) sp", |_| 13)]
