@@ -1,11 +1,10 @@
 use identity_hash::IdentityHashMap;
-use lexer::Lexer;
+use lexer::lex;
 use rustc_hash::FxHashSet as HashSet;
 
 pub mod fingerprint;
 pub mod identity_hash;
 pub mod lexer;
-mod token;
 
 /// Returns a list of matches represented as the indices in the input list
 /// of the first and second occurrences of a match.
@@ -27,7 +26,7 @@ pub fn detect_plagiarism<S: AsRef<str>>(
 
     for (index, document) in documents.iter().enumerate() {
         let fingerprint = if should_lex {
-            let tokens = Lexer::new(document.as_ref()).lex();
+            let tokens = lex(document.as_ref());
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
         } else {
             // Use bytes instead of chars since it shouldn't affect the result and is faster.
