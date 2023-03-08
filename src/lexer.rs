@@ -59,6 +59,10 @@ pub enum Token<'source> {
 
     // TODO: Note that this representation for registers is only valid for ARMv7, ARMv8 uses x0-x30, w0-w30, and some more special registers
     #[regex(r"(?imx) r\d+ # r0-r15", parse_register)]
+    #[regex(r"(?imx) a\d # a1-a4", parse_a_register)]
+    #[regex(r"(?imx) v\d # v1-v8", parse_v_register)]
+    #[regex(r"(?imx) tr | sb", |_| 9)]
+    #[regex(r"(?imx) ip", |_| 12)]
     #[regex(r"(?imx) sp", |_| 13)]
     #[regex(r"(?imx) lr", |_| 14)]
     #[regex(r"(?imx) pc", |_| 15)]
@@ -178,6 +182,22 @@ fn parse_floating_point<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Ha
 fn parse_register<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Result<u8, ()> {
     match lex.slice()[1..].parse() {
         Ok(n) if n <= 15 => Ok(n),
+        _ => Err(()),
+    }
+}
+
+#[inline]
+fn parse_a_register<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Result<u8, ()> {
+    match lex.slice()[1..].parse::<u8>() {
+        Ok(n) if n <= 4 => Ok(n - 1),
+        _ => Err(()),
+    }
+}
+
+#[inline]
+fn parse_v_register<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Result<u8, ()> {
+    match lex.slice()[1..].parse::<u8>() {
+        Ok(n) if n <= 8 => Ok(n + 3),
         _ => Err(()),
     }
 }
