@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manual_analyzer::lexer::lex;
+use manual_analyzer::lexing::relative::lex;
 
 fn bench_lexer(c: &mut Criterion) {
     let mut group = c.benchmark_group("Lexing ARM assembly");

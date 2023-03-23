@@ -22,6 +22,10 @@ struct Args {
     /// Whether to tokenize the documents before fingerprinting.
     #[arg(short, long)]
     lex: bool,
+    /// Whether to tokenize the documents using relative symbol positions for more robust copy detection.
+    /// This option is ignored if `lex` is false.
+    #[arg(short, long)]
+    relative: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -44,7 +48,13 @@ fn main() -> anyhow::Result<()> {
         .map(get_contents)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let matches = detect_plagiarism(args.noise, args.guarantee, args.lex, &project_contents);
+    let matches = detect_plagiarism(
+        args.noise,
+        args.guarantee,
+        args.lex,
+        args.relative,
+        &project_contents,
+    );
 
     if matches.is_empty() {
         println!("No matches found.");
