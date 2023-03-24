@@ -45,9 +45,9 @@ pub enum Token<'source> {
     Colon,
 
     // A directive is a symbol preceded by a dot
-    #[regex(r"(?imx) \.[a-zA-Z_.$][a-zA-Z0-9_.$]*")]
-    #[regex(r#"(?imx) \." (?: [^"] | \\. )* "#)]
-    Directive(&'source str),
+    #[regex(r"(?imx) \.[a-zA-Z_.$][a-zA-Z0-9_.$]*", parse_unquoted_directive)]
+    #[regex(r#"(?imx) \." (?: [^"] | \\. )* " "#, parse_quoted_directive)]
+    Directive(String),
 
     // Constants
     #[regex(r"(?imx) 0b[01]+", parse_binary_integer)]
@@ -165,6 +165,18 @@ fn parse_quoted_symbol<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Str
 }
 
 #[inline]
+fn parse_unquoted_directive<'source>(lex: &mut Lexer<'source, Token<'source>>) -> String {
+    let s = lex.slice();
+    s[1..s.len()].to_ascii_lowercase()
+}
+
+#[inline]
+fn parse_quoted_directive<'source>(lex: &mut Lexer<'source, Token<'source>>) -> String {
+    let s = lex.slice();
+    s[2..s.len() - 1].to_ascii_lowercase()
+}
+
+#[inline]
 fn parse_binary_integer<'source>(lex: &mut Lexer<'source, Token<'source>>) -> i64 {
     i64::from_str_radix(&lex.slice()[2..], 2).unwrap()
 }
@@ -264,6 +276,22 @@ mod tests {
     #[test]
     fn lex_radix_sort() {
         assert!(!lex(include_str!("../../benches/radix_sort.s")).contains(&Error))
+    }
+
+    #[test]
+    fn test_directives() {
+        assert_eq!(
+            lex(".word .WORD .\"word\" .\"WORD\""),
+            vec![
+                Directive("word".to_owned()),
+                Whitespace,
+                Directive("word".to_owned()),
+                Whitespace,
+                Directive("word".to_owned()),
+                Whitespace,
+                Directive("word".to_owned()),
+            ]
+        )
     }
 
     #[test]
