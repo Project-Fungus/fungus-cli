@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use manual_analyzer::detect_plagiarism;
+use manual_analyzer::{detect_plagiarism, TokenizingStrategy};
 
 /// A simple copy detection tool for the ARM assembly language.
 #[derive(Parser, Debug)]
@@ -19,9 +19,9 @@ struct Args {
     /// Guarantee threshold. Matches at least as long as this value are guaranteed to be flagged.
     #[arg(short, long, default_value_t = 10)]
     guarantee: usize,
-    /// Whether to tokenize the documents before fingerprinting.
-    #[arg(short, long)]
-    lex: bool,
+    /// Tokenizing strategy to use. Can be one of "bytes", "naive", or "relative".
+    #[arg(value_enum, short, long, default_value = "bytes")]
+    tokenizing_strategy: TokenizingStrategy,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -44,7 +44,12 @@ fn main() -> anyhow::Result<()> {
         .map(get_contents)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let matches = detect_plagiarism(args.noise, args.guarantee, args.lex, &project_contents);
+    let matches = detect_plagiarism(
+        args.noise,
+        args.guarantee,
+        args.tokenizing_strategy,
+        &project_contents,
+    );
 
     if matches.is_empty() {
         println!("No matches found.");

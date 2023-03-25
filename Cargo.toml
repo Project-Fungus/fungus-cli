@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.69"
 clap = { version = "4.1.4", features = ["derive"] }
+itertools = "0.10.5"
 logos = "0.12.1"
 rustc-hash = "1.1.0"
 

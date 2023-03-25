@@ -1,3 +1,5 @@
+mod parser;
+
 use std::hash::{Hash, Hasher};
 
 use logos::{Lexer, Logos};
@@ -9,7 +11,7 @@ pub enum Token<'source> {
     #[error]
     Error,
 
-    // All whitespace except for newlines
+    /// All whitespace except for newlines
     #[regex(r"(?imx) [\s && [^\n]]+")]
     Whitespace,
 
@@ -23,20 +25,24 @@ pub enum Token<'source> {
     #[regex(r"(?imx) @ [^\n]*", parse_single_char_line_comment)]
     Comment(&'source str),
 
+    /// Used to represent labels, registers, instructions, directives, and string literals
+    /// In the next pass, the parser will replace instructions and directives with a `KeySymbol` variant, and other
+    /// symbols with a `RelativeSymbol` variant
     #[regex(r"(?imx) [a-zA-Z_.$][a-zA-Z0-9_.$]*", parse_unquoted_symbol)]
     #[regex(r#"(?imx) " (?: [^"] | \\. )* " "#, parse_quoted_symbol)]
-    // Also used to represent string literals
     Symbol(String),
 
-    // A label is a symbol followed by a colon
-    #[regex(r"(?imx) [a-zA-Z_.$][a-zA-Z0-9_.$]*:")]
-    #[regex(r#"(?imx) " (?: [^"] | \\. )* ": "#)]
-    Label(&'source str),
+    /// Each statement (delimited by newlines) begins with zero or more labels, followed by a "key symbol" which can be
+    /// either an instruction or a directive.
+    KeySymbol(String),
+    /// Used to represent labels, registers, and string literals.
+    /// Holds the distance from the last occurrence of the symbol in the source code or 0 if this is
+    /// the first occurrence of that symbol.
+    RelativeSymbol(usize),
 
-    // A directive is a symbol preceded by a dot
-    #[regex(r"(?imx) \.[a-zA-Z_.$][a-zA-Z0-9_.$]*")]
-    #[regex(r#"(?imx) \." (?: [^"] | \\. )* "#)]
-    Directive(&'source str),
+    /// A label is a symbol followed by a colon
+    #[token(":")]
+    Colon,
 
     // Constants
     #[regex(r"(?imx) 0b[01]+", parse_binary_integer)]
@@ -56,20 +62,6 @@ pub enum Token<'source> {
 
     #[token(",")]
     Comma,
-
-    // TODO: Note that this representation for registers is only valid for ARMv7, ARMv8 uses x0-x30, w0-w30, and some more special registers
-    // r0-r15
-    #[regex(r"(?imx) r\d+", parse_register)]
-    // a1-a4
-    #[regex(r"(?imx) a\d", parse_a_register)]
-    // v1-v8
-    #[regex(r"(?imx) v\d", parse_v_register)]
-    #[regex(r"(?imx) tr | sb", |_| 9)]
-    #[regex(r"(?imx) ip", |_| 12)]
-    #[regex(r"(?imx) sp", |_| 13)]
-    #[regex(r"(?imx) lr", |_| 14)]
-    #[regex(r"(?imx) pc", |_| 15)]
-    Register(u8),
 
     // Expressions
     #[token("(")]
@@ -129,14 +121,14 @@ pub enum Token<'source> {
     RBracket,
     #[token("#")]
     Hash,
-    #[token(":")]
-    Colon,
 }
 
 #[must_use]
 pub fn lex(s: &str) -> Vec<Token> {
     let lexer = Token::lexer(s);
-    lexer.collect()
+
+    // Perform a simple parsing pass, replacing `Symbol`s with `KeySymbol`s and `RelativeSymbol`s
+    parser::parse(lexer)
 }
 
 #[inline]
@@ -192,30 +184,6 @@ fn parse_floating_point<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Ha
     HashableFloat(lex.slice()[2..].parse().unwrap())
 }
 
-#[inline]
-fn parse_register<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Result<u8, ()> {
-    match lex.slice()[1..].parse() {
-        Ok(n) if n <= 15 => Ok(n),
-        _ => Err(()),
-    }
-}
-
-#[inline]
-fn parse_a_register<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Result<u8, ()> {
-    match lex.slice()[1..].parse::<u8>() {
-        Ok(n) if n <= 4 => Ok(n - 1),
-        _ => Err(()),
-    }
-}
-
-#[inline]
-fn parse_v_register<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Result<u8, ()> {
-    match lex.slice()[1..].parse::<u8>() {
-        Ok(n) if n <= 8 => Ok(n + 3),
-        _ => Err(()),
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct HashableFloat(f64);
 
@@ -241,8 +209,11 @@ mod tests {
 
     #[test]
     fn test_registers() {
-        let tokens = lex("R1 sP");
-        assert_eq!(tokens, vec![Register(1), Whitespace, Register(13)]);
+        let tokens = lex("add sP");
+        assert_eq!(
+            tokens,
+            vec![KeySymbol("add".to_owned()), Whitespace, RelativeSymbol(0)]
+        );
     }
 
     #[test]
@@ -252,11 +223,15 @@ mod tests {
 
     #[test]
     fn test_instruction() {
-        assert_eq!(lex("add"), vec![Symbol("add".to_owned())]);
-        assert_eq!(lex("addne"), vec![Symbol("addne".to_owned())]);
+        assert_eq!(lex("add"), vec![KeySymbol("add".to_owned())]);
+        assert_eq!(lex("addne"), vec![KeySymbol("addne".to_owned())]);
         assert_eq!(
             lex("YIELDS R0"),
-            vec![Symbol("yields".to_owned()), Whitespace, Register(0)]
+            vec![
+                KeySymbol("yields".to_owned()),
+                Whitespace,
+                RelativeSymbol(0)
+            ]
         );
     }
 
@@ -283,6 +258,52 @@ mod tests {
 
     #[test]
     fn lex_radix_sort() {
-        assert!(!lex(include_str!("../benches/radix_sort.s")).contains(&Error))
+        assert!(!lex(include_str!("../../benches/radix_sort.s")).contains(&Error))
+    }
+
+    #[test]
+    fn test_directives() {
+        assert_eq!(
+            lex(".word;.WORD;\".word\";\".WORD\""),
+            vec![
+                KeySymbol(".word".to_owned()),
+                Newline,
+                KeySymbol(".word".to_owned()),
+                Newline,
+                KeySymbol(".word".to_owned()),
+                Newline,
+                KeySymbol(".word".to_owned()),
+            ]
+        )
+    }
+
+    #[test]
+    fn relative_symbols() {
+        assert_eq!(
+            lex("r1: r1: r1 r1, r1;; add r0, r1"),
+            vec![
+                RelativeSymbol(0),
+                Colon,
+                Whitespace,
+                RelativeSymbol(3),
+                Colon,
+                Whitespace,
+                KeySymbol("r1".to_owned()),
+                Whitespace,
+                RelativeSymbol(5),
+                Comma,
+                Whitespace,
+                RelativeSymbol(3),
+                Newline,
+                Newline,
+                Whitespace,
+                KeySymbol("add".to_owned()),
+                Whitespace,
+                RelativeSymbol(0),
+                Comma,
+                Whitespace,
+                RelativeSymbol(9),
+            ]
+        )
     }
 }
