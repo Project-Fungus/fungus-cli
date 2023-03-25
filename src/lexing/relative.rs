@@ -11,7 +11,7 @@ pub enum Token<'source> {
     #[error]
     Error,
 
-    // All whitespace except for newlines
+    /// All whitespace except for newlines
     #[regex(r"(?imx) [\s && [^\n]]+")]
     Whitespace,
 
@@ -25,29 +25,24 @@ pub enum Token<'source> {
     #[regex(r"(?imx) @ [^\n]*", parse_single_char_line_comment)]
     Comment(&'source str),
 
+    /// Used to represent labels, registers, instructions, directives, and string literals
+    /// In the next pass, the parser will replace instructions and directives with a `KeySymbol` variant, and other
+    /// symbols with a `RelativeSymbol` variant
     #[regex(r"(?imx) [a-zA-Z_.$][a-zA-Z0-9_.$]*", parse_unquoted_symbol)]
     #[regex(r#"(?imx) " (?: [^"] | \\. )* " "#, parse_quoted_symbol)]
-    // Used to represent labels, registers, instructions, and string literals
-    // In the next pass, the parser will replace instructions with an `Instruction` variant, and other symbols with a
-    // `RelativeSymbol` variant
     Symbol(String),
 
-    // Each statement (delimited by newlines) begins with zero or more labels, followed by a "key symbol" which can be
-    // either an instruction or a directive.
-    // Empty statements are allowed.
-    Instruction(String),
-    // `RelativeSymbol` holds the distance from the last occurrence of the symbol in the source code or 0 if this is the
-    // first occurrence of that symbol.
+    /// Each statement (delimited by newlines) begins with zero or more labels, followed by a "key symbol" which can be
+    /// either an instruction or a directive.
+    KeySymbol(String),
+    /// `RelativeSymbol` is used to represent labels, registers, and string literals.
+    /// `RelativeSymbol`s hold the distance from the last occurrence of the symbol in the source code or 0 if this is
+    /// the first occurrence of that symbol.
     RelativeSymbol(usize),
 
-    // A label is a symbol followed by a colon
+    /// A label is a symbol followed by a colon
     #[token(":")]
     Colon,
-
-    // A directive is a symbol preceded by a dot
-    #[regex(r"(?imx) \.[a-zA-Z_.$][a-zA-Z0-9_.$]*", parse_unquoted_directive)]
-    #[regex(r#"(?imx) \." (?: [^"] | \\. )* " "#, parse_quoted_directive)]
-    Directive(String),
 
     // Constants
     #[regex(r"(?imx) 0b[01]+", parse_binary_integer)]
@@ -165,18 +160,6 @@ fn parse_quoted_symbol<'source>(lex: &mut Lexer<'source, Token<'source>>) -> Str
 }
 
 #[inline]
-fn parse_unquoted_directive<'source>(lex: &mut Lexer<'source, Token<'source>>) -> String {
-    let s = lex.slice();
-    s[1..s.len()].to_ascii_lowercase()
-}
-
-#[inline]
-fn parse_quoted_directive<'source>(lex: &mut Lexer<'source, Token<'source>>) -> String {
-    let s = lex.slice();
-    s[2..s.len() - 1].to_ascii_lowercase()
-}
-
-#[inline]
 fn parse_binary_integer<'source>(lex: &mut Lexer<'source, Token<'source>>) -> i64 {
     i64::from_str_radix(&lex.slice()[2..], 2).unwrap()
 }
@@ -229,7 +212,7 @@ mod tests {
         let tokens = lex("add sP");
         assert_eq!(
             tokens,
-            vec![Instruction("add".to_owned()), Whitespace, RelativeSymbol(0)]
+            vec![KeySymbol("add".to_owned()), Whitespace, RelativeSymbol(0)]
         );
     }
 
@@ -240,12 +223,12 @@ mod tests {
 
     #[test]
     fn test_instruction() {
-        assert_eq!(lex("add"), vec![Instruction("add".to_owned())]);
-        assert_eq!(lex("addne"), vec![Instruction("addne".to_owned())]);
+        assert_eq!(lex("add"), vec![KeySymbol("add".to_owned())]);
+        assert_eq!(lex("addne"), vec![KeySymbol("addne".to_owned())]);
         assert_eq!(
             lex("YIELDS R0"),
             vec![
-                Instruction("yields".to_owned()),
+                KeySymbol("yields".to_owned()),
                 Whitespace,
                 RelativeSymbol(0)
             ]
@@ -281,15 +264,15 @@ mod tests {
     #[test]
     fn test_directives() {
         assert_eq!(
-            lex(".word .WORD .\"word\" .\"WORD\""),
+            lex(".word;.WORD;\".word\";\".WORD\""),
             vec![
-                Directive("word".to_owned()),
-                Whitespace,
-                Directive("word".to_owned()),
-                Whitespace,
-                Directive("word".to_owned()),
-                Whitespace,
-                Directive("word".to_owned()),
+                KeySymbol(".word".to_owned()),
+                Newline,
+                KeySymbol(".word".to_owned()),
+                Newline,
+                KeySymbol(".word".to_owned()),
+                Newline,
+                KeySymbol(".word".to_owned()),
             ]
         )
     }
@@ -305,7 +288,7 @@ mod tests {
                 RelativeSymbol(3),
                 Colon,
                 Whitespace,
-                Instruction("r1".to_owned()),
+                KeySymbol("r1".to_owned()),
                 Whitespace,
                 RelativeSymbol(5),
                 Comma,
@@ -314,7 +297,7 @@ mod tests {
                 Newline,
                 Newline,
                 Whitespace,
-                Instruction("add".to_owned()),
+                KeySymbol("add".to_owned()),
                 Whitespace,
                 RelativeSymbol(0),
                 Comma,

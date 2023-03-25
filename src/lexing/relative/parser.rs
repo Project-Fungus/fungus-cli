@@ -1,5 +1,6 @@
-use std::{collections::HashMap, iter::Peekable};
+use std::collections::HashMap;
 
+use itertools::{peek_nth, PeekNth};
 use logos::Lexer;
 
 use super::Token::{self, *};
@@ -9,7 +10,7 @@ pub fn parse<'source>(lexer: Lexer<'source, Token<'source>>) -> Vec<Token<'sourc
 }
 
 struct Parser<'source> {
-    lexer: Peekable<Lexer<'source, Token<'source>>>,
+    lexer: PeekNth<Lexer<'source, Token<'source>>>,
     result: Vec<Token<'source>>,
     token_count: usize,
     // Maps symbol names to the last token index at which they were encountered
@@ -20,7 +21,7 @@ impl<'source> Parser<'source> {
     #[inline]
     fn new(lexer: Lexer<'source, Token<'source>>) -> Self {
         Self {
-            lexer: lexer.peekable(),
+            lexer: peek_nth(lexer),
             result: Vec::new(),
             token_count: 0,
             symbol_occurrences: HashMap::new(),
@@ -83,14 +84,9 @@ impl<'source> Parser<'source> {
                         self.result.push(relative_symbol);
                     } else {
                         // This is an instruction, stop looking for a key symbol
-                        self.result.push(Instruction(s));
+                        self.result.push(KeySymbol(s));
                         break;
                     }
-                }
-                // Directives are also key symbols
-                Directive(_) => {
-                    self.result.push(t);
-                    break;
                 }
                 // All other tokens, even syntactically invalid ones are ignored and returned without modifications
                 t => {
