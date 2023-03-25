@@ -12,8 +12,9 @@ pub fn parse<'source>(lexer: Lexer<'source, Token<'source>>) -> Vec<Token<'sourc
 struct Parser<'source> {
     lexer: PeekNth<Lexer<'source, Token<'source>>>,
     result: Vec<Token<'source>>,
+    /// The number of tokens consumed so far
     token_count: usize,
-    // Maps symbol names to the last token index at which they were encountered
+    /// Maps symbol names to the last token index at which they were encountered
     symbol_occurrences: HashMap<String, usize>,
 }
 
@@ -68,7 +69,7 @@ impl<'source> Parser<'source> {
         // Empty statements are allowed.
 
         // Replace labels, registers, and string literals with `RelativeSymbol` tokens
-        // Replace instructions with `Instruction` tokens
+        // Replace instructions and directives with `KeySymbol` tokens
 
         // Parse zero or more labels followed by a key symbol
         while let Some(t) = self.next() {
@@ -83,7 +84,7 @@ impl<'source> Parser<'source> {
                         let relative_symbol = self.relative_symbol(s);
                         self.result.push(relative_symbol);
                     } else {
-                        // This is an instruction, stop looking for a key symbol
+                        // This is a key symbol, stop looking for a key symbol
                         self.result.push(KeySymbol(s));
                         break;
                     }
