@@ -35,8 +35,8 @@ pub enum Token<'source> {
     /// Each statement (delimited by newlines) begins with zero or more labels, followed by a "key symbol" which can be
     /// either an instruction or a directive.
     KeySymbol(String),
-    /// `RelativeSymbol` is used to represent labels, registers, and string literals.
-    /// `RelativeSymbol`s hold the distance from the last occurrence of the symbol in the source code or 0 if this is
+    /// Used to represent labels, registers, and string literals.
+    /// Holds the distance from the last occurrence of the symbol in the source code or 0 if this is
     /// the first occurrence of that symbol.
     RelativeSymbol(usize),
 
