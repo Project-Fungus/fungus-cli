@@ -127,7 +127,7 @@ pub enum Token<'source> {
 pub fn lex(s: &str) -> Vec<Token> {
     let lexer = Token::lexer(s);
 
-    // Perform a simple parsing pass, replacing `Symbol`s with `Instruction`s and `RelativeSymbol`s
+    // Perform a simple parsing pass, replacing `Symbol`s with `KeySymbol`s and `RelativeSymbol`s
     parser::parse(lexer)
 }
 
