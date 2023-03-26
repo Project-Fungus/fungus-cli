@@ -4,6 +4,7 @@ use identity_hash::IdentityHashMap;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
 use logos::Span;
+use serde::Serialize;
 
 pub mod fingerprint;
 pub mod identity_hash;
@@ -23,11 +24,11 @@ pub enum TokenizingStrategy {
     Relative,
 }
 
-// TODO: Display only filename
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize)]
 pub struct File<'a> {
     project_name: &'a str,
     name: &'a str,
+    #[serde(skip_serializing)]
     contents: &'a str,
 }
 
@@ -41,7 +42,7 @@ impl<'a> File<'a> {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize)]
 pub struct Match<'a> {
     file1: &'a File<'a>,
     file1_spans: Vec<Span>,

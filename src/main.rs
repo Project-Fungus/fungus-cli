@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use manual_analyzer::{detect_plagiarism, File, TokenizingStrategy};
+use manual_analyzer::{detect_plagiarism, File, Match, TokenizingStrategy};
 
 /// A simple copy detection tool for the ARM assembly language.
 #[derive(Parser, Debug)]
@@ -58,13 +58,7 @@ fn main() -> anyhow::Result<()> {
         &document_references,
     );
 
-    if matches.is_empty() {
-        println!("No matches found.");
-    } else {
-        for m in matches {
-            println!("{m:?}");
-        }
-    }
+    output_matches(matches);
 
     Ok(())
 }
@@ -91,5 +85,15 @@ fn get_contents(path: &DirEntry) -> anyhow::Result<(PathBuf, String)> {
         let contents = std::fs::read_to_string(path.path())
             .with_context(|| format!("Failed to parse \"{:?}\" as UTF-8", path.path()))?;
         Ok((path.path(), contents))
+    }
+}
+
+fn output_matches(matches: Vec<Match>) {
+    if matches.is_empty() {
+        println!("No matches found.");
+    } else {
+        let json = serde_json::to_string_pretty(&matches).unwrap();
+
+        println!("{json}");
     }
 }
