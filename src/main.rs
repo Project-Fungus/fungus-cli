@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use manual_analyzer::{detect_plagiarism, TokenizingStrategy};
+use manual_analyzer::{detect_plagiarism, File, TokenizingStrategy};
 
 /// A simple copy detection tool for the ARM assembly language.
 #[derive(Parser, Debug)]
@@ -44,21 +44,25 @@ fn main() -> anyhow::Result<()> {
         .map(get_contents)
         .collect::<Result<Vec<_>, _>>()?;
 
+    // TODO: fingerprint files, not projects (so that the spans are meaningful)
+    let documents = project_contents
+        .iter()
+        .map(|(path, contents)| File::new(path.to_str().unwrap(), path.to_str().unwrap(), contents))
+        .collect::<Vec<_>>();
+    let document_references = documents.iter().collect::<Vec<_>>();
+
     let matches = detect_plagiarism(
         args.noise,
         args.guarantee,
         args.tokenizing_strategy,
-        &project_contents,
+        &document_references,
     );
 
     if matches.is_empty() {
         println!("No matches found.");
     } else {
-        println!("The following projects have at least one match:");
-        for (i, j) in matches {
-            let first = projects[i].path();
-            let second = projects[j].path();
-            println!("{first:?}, {second:?}");
+        for m in matches {
+            println!("{m:?}");
         }
     }
 
@@ -68,10 +72,10 @@ fn main() -> anyhow::Result<()> {
 /// Returns the contents of all files in the given directory concatenated
 /// together. If the given path is not a directory, then None is returned.
 // TODO: Replace with a library like `walkdir`.
-fn get_contents(path: &DirEntry) -> anyhow::Result<String> {
+fn get_contents(path: &DirEntry) -> anyhow::Result<(PathBuf, String)> {
     let metadata = path
         .metadata()
-        .with_context(|| format!("Failed to read directory entry metadata at {:?}", path))?;
+        .with_context(|| format!("Failed to read directory entry metadata at {path:?}"))?;
 
     if metadata.is_dir() {
         let mut contents = String::new();
@@ -79,13 +83,13 @@ fn get_contents(path: &DirEntry) -> anyhow::Result<String> {
             .with_context(|| format!("Failed to read directory entries at {:?}", path.path()))?
         {
             let child = child?;
-            let child_contents = get_contents(&child)?;
+            let (_, child_contents) = get_contents(&child)?;
             contents += &child_contents;
         }
-        Ok(contents)
+        Ok((path.path(), contents))
     } else {
         let contents = std::fs::read_to_string(path.path())
             .with_context(|| format!("Failed to parse \"{:?}\" as UTF-8", path.path()))?;
-        Ok(contents)
+        Ok((path.path(), contents))
     }
 }
