@@ -54,7 +54,7 @@ fn choose_fingerprint_original(hashes: &[u64], w: usize) -> Fingerprint {
     }
 
     Fingerprint {
-        hashes: fingerprint_hashes,
+        spanned_hashes: fingerprint_hashes,
     }
 }
 
@@ -98,7 +98,9 @@ fn min_with_index(hashes: &[u64]) -> (u64, usize) {
 fn choose_fingerprint_new(hashes: &[u64], w: usize) -> Fingerprint {
     // Guarantee that the length is at least one window.
     if hashes.len() < w {
-        return Fingerprint { hashes: vec![] };
+        return Fingerprint {
+            spanned_hashes: vec![],
+        };
     }
 
     // First min hash.
@@ -130,7 +132,7 @@ fn choose_fingerprint_new(hashes: &[u64], w: usize) -> Fingerprint {
     }
 
     Fingerprint {
-        hashes: fingerprint_hashes,
+        spanned_hashes: fingerprint_hashes,
     }
 }
 

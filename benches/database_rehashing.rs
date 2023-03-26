@@ -23,7 +23,7 @@ fn detect_plagiarism_rehashing_default(
         let fingerprint =
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);
 
-        for hash in fingerprint.hashes {
+        for hash in fingerprint.spanned_hashes {
             match hashes_seen.get(&hash) {
                 Some(&first_index) if first_index == index => {}
                 Some(&first_index) => {
@@ -60,7 +60,7 @@ fn detect_plagiarism_rehashing_rustc_hash(
         let fingerprint =
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);
 
-        for hash in fingerprint.hashes {
+        for hash in fingerprint.spanned_hashes {
             match hashes_seen.get(&hash) {
                 Some(&first_index) if first_index == index => {}
                 Some(&first_index) => {
@@ -97,7 +97,7 @@ fn detect_plagiarism_no_rehashing(
         let fingerprint =
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);
 
-        for hash in fingerprint.hashes {
+        for hash in fingerprint.spanned_hashes {
             match hashes_seen.get(&hash) {
                 Some(&first_index) if first_index == index => {}
                 Some(&first_index) => {

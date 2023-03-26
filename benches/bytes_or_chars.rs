@@ -21,7 +21,7 @@ fn detect_plagiarism_bytes(
         let fingerprint =
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);
 
-        for hash in fingerprint.hashes {
+        for hash in fingerprint.spanned_hashes {
             match hashes_seen.get(&hash) {
                 Some(&first_index) if first_index == index => {}
                 Some(&first_index) => {
@@ -58,7 +58,7 @@ fn detect_plagiarism_chars(
         let fingerprint =
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &characters);
 
-        for hash in fingerprint.hashes {
+        for hash in fingerprint.spanned_hashes {
             match hashes_seen.get(&hash) {
                 Some(&first_index) if first_index == index => {}
                 Some(&first_index) => {

@@ -2,6 +2,7 @@ use clap::ValueEnum;
 use identity_hash::IdentityHashMap;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
+use logos::Span;
 use rustc_hash::FxHashSet as HashSet;
 
 pub mod fingerprint;
@@ -35,9 +36,10 @@ pub fn detect_plagiarism<S: AsRef<str>>(
 ) -> Vec<(usize, usize)> {
     // Maps a hash to the index of the document in which it was first seen
     // To prevent rehashing the hashes, we use a hash map which does not rehash the keys.
-    let mut hashes_seen: IdentityHashMap<usize> = IdentityHashMap::default();
+    let mut hashes_seen: IdentityHashMap<(usize, Span)> = IdentityHashMap::default();
 
     // Keep matches in a hash set so that matches are not reported multiple times.
+    // TODO: include the spans here
     let mut matches: HashSet<(usize, usize)> = HashSet::default();
 
     for (index, document) in documents.iter().enumerate() {
@@ -45,28 +47,30 @@ pub fn detect_plagiarism<S: AsRef<str>>(
             TokenizingStrategy::Bytes => {
                 // Use bytes instead of chars since it shouldn't affect the result and is faster.
                 let characters = document.as_ref().as_bytes();
-                fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters)
+                // TODO: More efficient way of doing this?
+                let characters = characters.iter().map(|&c| (c, 0..0)).collect::<Vec<_>>();
+                fingerprint::fingerprint(noise_threshold, guarantee_threshold, &characters)
             }
             TokenizingStrategy::Naive => {
                 let tokens = lex(document.as_ref());
-                // TODO: Propagate position, delete #[derive(Clone)] from tokens
-                let tokens = tokens.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>();
                 fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
             }
             TokenizingStrategy::Relative => {
                 let tokens = lex_relative(document.as_ref());
+                // TODO: Update relative lexer as well
+                let tokens = tokens.iter().map(|t| (t, 0..1)).collect::<Vec<_>>();
                 fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
             }
         };
 
-        for hash in fingerprint.hashes {
+        for (hash, span) in fingerprint.spanned_hashes {
             match hashes_seen.get(&hash) {
-                Some(&first_index) if first_index == index => {}
-                Some(&first_index) => {
-                    matches.insert((first_index, index));
+                Some((first_index, _)) if *first_index == index => {}
+                Some((first_index, first_span)) => {
+                    matches.insert((*first_index, index));
                 }
                 None => {
-                    hashes_seen.insert(hash, index);
+                    hashes_seen.insert(hash, (index, span));
                 }
             }
         }
