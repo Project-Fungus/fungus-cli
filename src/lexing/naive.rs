@@ -264,20 +264,20 @@ mod tests {
     fn test_whitespace() {
         assert_eq!(
             lex("  \n\t "),
-            vec![(Whitespace, 0..2), (Newline, 2..3), (Whitespace, 3..5)]
+            vec![(Whitespace, 0..3), (Newline, 3..4), (Whitespace, 4..6)]
         )
     }
 
     #[test]
     fn test_instruction() {
-        assert_eq!(lex("add"), vec![(Symbol("add".to_owned()), 0..4)]);
-        assert_eq!(lex("addne"), vec![(Symbol("addne".to_owned()), 0..6)]);
+        assert_eq!(lex("add"), vec![(Symbol("add".to_owned()), 0..3)]);
+        assert_eq!(lex("addne"), vec![(Symbol("addne".to_owned()), 0..5)]);
         assert_eq!(
             lex("YIELDS R0"),
             vec![
-                (Symbol("yields".to_owned()), 0..7),
-                (Whitespace, 7..8),
-                (Register(0), 8..10)
+                (Symbol("yields".to_owned()), 0..6),
+                (Whitespace, 6..7),
+                (Register(0), 7..9)
             ]
         );
     }
