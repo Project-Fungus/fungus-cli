@@ -49,6 +49,8 @@ pub fn detect_plagiarism<S: AsRef<str>>(
             }
             TokenizingStrategy::Naive => {
                 let tokens = lex(document.as_ref());
+                // TODO: Propagate position, delete #[derive(Clone)] from tokens
+                let tokens = tokens.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>();
                 fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
             }
             TokenizingStrategy::Relative => {
