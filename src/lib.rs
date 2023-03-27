@@ -88,6 +88,7 @@ pub fn detect_plagiarism<'a>(
     guarantee_threshold: usize,
     tokenizing_strategy: TokenizingStrategy,
     documents: &'a [&File<'a>],
+    min_matches: usize,
 ) -> Vec<ProjectPair<'a>> {
     let document_fingerprints = documents.iter().map(|&d| {
         (
@@ -127,6 +128,7 @@ pub fn detect_plagiarism<'a>(
             num_matches: matches.len(),
             matches: matches.to_owned(),
         })
+        .filter(|p| p.num_matches >= min_matches)
         .sorted_unstable_by(|x, y| y.num_matches.cmp(&x.num_matches))
         .collect()
 }
@@ -241,7 +243,7 @@ mod tests {
             .map(|(project_name, contents)| File::new(project_name, "Chapter".into(), contents))
             .collect::<Vec<_>>();
         let document_references = documents.iter().collect::<Vec<_>>();
-        let matches = detect_plagiarism(25, 50, TokenizingStrategy::Bytes, &document_references);
+        let matches = detect_plagiarism(25, 50, TokenizingStrategy::Bytes, &document_references, 0);
         println!("{} matches found!", matches.len());
     }
 
@@ -252,7 +254,7 @@ mod tests {
         let file3 = File::new("P3", "C:/P3/file.txt".into(), "acb");
 
         let documents = vec![&file1, &file2, &file3];
-        let matches = detect_plagiarism(2, 3, TokenizingStrategy::Bytes, &documents);
+        let matches = detect_plagiarism(2, 3, TokenizingStrategy::Bytes, &documents, 0);
 
         assert_eq!(
             matches,

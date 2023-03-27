@@ -23,12 +23,15 @@ struct Args {
     /// Tokenizing strategy to use. Can be one of "bytes", "naive", or "relative".
     #[arg(value_enum, short, long, default_value = "bytes")]
     tokenizing_strategy: TokenizingStrategy,
-    /// Whether the JSON output should be pretty-printed
+    /// Whether the JSON output should be pretty-printed.
     #[arg(short, long, default_value_t = false)]
     pretty: bool,
-    /// Output file
+    /// Output file.
     #[arg(short, long, default_value = "./fungus-output.json")]
     output_file: PathBuf,
+    /// Similarity threshold. Pairs of projects with fewer than this number of matches will not be shown.
+    #[arg(short, long, default_value_t = 5)]
+    min_matches: usize,
 }
 
 #[derive(Serialize)]
@@ -68,6 +71,7 @@ fn main() -> anyhow::Result<()> {
         args.guarantee,
         args.tokenizing_strategy,
         &document_references,
+        args.min_matches,
     );
 
     let output = Output { project_pairs };
