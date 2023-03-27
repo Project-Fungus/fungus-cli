@@ -36,7 +36,13 @@ struct Args {
 
 #[derive(Serialize)]
 struct Output<'a> {
+    metadata: Metadata,
     project_pairs: Vec<ProjectPair<'a>>,
+}
+
+#[derive(Serialize)]
+struct Metadata {
+    num_project_pairs: usize,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -74,7 +80,13 @@ fn main() -> anyhow::Result<()> {
         args.min_matches,
     );
 
-    let output = Output { project_pairs };
+    let metadata = Metadata {
+        num_project_pairs: project_pairs.len(),
+    };
+    let output = Output {
+        project_pairs,
+        metadata,
+    };
 
     output_matches(output, &args.output_file, args.pretty)?;
 
