@@ -1,6 +1,9 @@
 mod parser;
 
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    ops::Range,
+};
 
 use logos::{Lexer, Logos};
 
@@ -124,8 +127,8 @@ pub enum Token<'source> {
 }
 
 #[must_use]
-pub fn lex(s: &str) -> Vec<Token> {
-    let lexer = Token::lexer(s);
+pub fn lex(s: &str) -> Vec<(Token, Range<usize>)> {
+    let lexer = Token::lexer(s).spanned();
 
     // Perform a simple parsing pass, replacing `Symbol`s with `KeySymbol`s and `RelativeSymbol`s
     parser::parse(lexer)
@@ -204,6 +207,8 @@ impl Eq for HashableFloat {}
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+
     use super::Token::*;
     use super::*;
 
@@ -212,39 +217,55 @@ mod tests {
         let tokens = lex("add sP");
         assert_eq!(
             tokens,
-            vec![KeySymbol("add".to_owned()), Whitespace, RelativeSymbol(0)]
+            vec![
+                (KeySymbol("add".to_owned()), 0..3),
+                (Whitespace, 3..4),
+                (RelativeSymbol(0), 4..6)
+            ]
         );
     }
 
     #[test]
     fn test_whitespace() {
-        assert_eq!(lex("  \n\t "), vec![Whitespace, Newline, Whitespace])
+        assert_eq!(
+            lex("  \n\t "),
+            vec![(Whitespace, 0..2), (Newline, 2..3), (Whitespace, 3..5)]
+        )
     }
 
     #[test]
     fn test_instruction() {
-        assert_eq!(lex("add"), vec![KeySymbol("add".to_owned())]);
-        assert_eq!(lex("addne"), vec![KeySymbol("addne".to_owned())]);
+        assert_eq!(lex("add"), vec![(KeySymbol("add".to_owned()), 0..3)]);
+        assert_eq!(lex("addne"), vec![(KeySymbol("addne".to_owned()), 0..5)]);
         assert_eq!(
             lex("YIELDS R0"),
             vec![
-                KeySymbol("yields".to_owned()),
-                Whitespace,
-                RelativeSymbol(0)
+                (KeySymbol("yields".to_owned()), 0..6),
+                (Whitespace, 6..7),
+                (RelativeSymbol(0), 7..9)
             ]
         );
     }
 
     #[test]
     fn test_float() {
-        assert_eq!(lex("0e0"), vec![FloatingPoint(HashableFloat(0.0))]);
-        assert_eq!(lex("0e+1"), vec![FloatingPoint(HashableFloat(1.0))]);
-        assert_eq!(lex("0e-1"), vec![FloatingPoint(HashableFloat(-1.0))]);
-        assert_eq!(lex("0e1e-1"), vec![FloatingPoint(HashableFloat(0.1))]);
-        assert_eq!(lex("0e-1.45"), vec![FloatingPoint(HashableFloat(-1.45))]);
+        assert_eq!(lex("0e0"), vec![(FloatingPoint(HashableFloat(0.0)), 0..3)]);
+        assert_eq!(lex("0e+1"), vec![(FloatingPoint(HashableFloat(1.0)), 0..4)]);
+        assert_eq!(
+            lex("0e-1"),
+            vec![(FloatingPoint(HashableFloat(-1.0)), 0..4)]
+        );
+        assert_eq!(
+            lex("0e1e-1"),
+            vec![(FloatingPoint(HashableFloat(0.1)), 0..6)]
+        );
+        assert_eq!(
+            lex("0e-1.45"),
+            vec![(FloatingPoint(HashableFloat(-1.45)), 0..8)]
+        );
         assert_eq!(
             lex("0e-1.45e+2"),
-            vec![FloatingPoint(HashableFloat(-1.45e2))]
+            vec![(FloatingPoint(HashableFloat(-1.45e2)), 0..10)]
         );
     }
 
@@ -258,7 +279,10 @@ mod tests {
 
     #[test]
     fn lex_radix_sort() {
-        assert!(!lex(include_str!("../../benches/radix_sort.s")).contains(&Error))
+        assert!(!lex(include_str!("../../benches/radix_sort.s"))
+            .iter()
+            .map(|(t, _span)| t)
+            .contains(&Error))
     }
 
     #[test]
@@ -266,13 +290,13 @@ mod tests {
         assert_eq!(
             lex(".word;.WORD;\".word\";\".WORD\""),
             vec![
-                KeySymbol(".word".to_owned()),
-                Newline,
-                KeySymbol(".word".to_owned()),
-                Newline,
-                KeySymbol(".word".to_owned()),
-                Newline,
-                KeySymbol(".word".to_owned()),
+                (KeySymbol(".word".to_owned()), 0..5),
+                (Newline, 5..6),
+                (KeySymbol(".word".to_owned()), 6..11),
+                (Newline, 11..12),
+                (KeySymbol(".word".to_owned()), 12..17),
+                (Newline, 17..18),
+                (KeySymbol(".word".to_owned()), 18..23),
             ]
         )
     }
@@ -282,27 +306,27 @@ mod tests {
         assert_eq!(
             lex("r1: r1: r1 r1, r1;; add r0, r1"),
             vec![
-                RelativeSymbol(0),
-                Colon,
-                Whitespace,
-                RelativeSymbol(3),
-                Colon,
-                Whitespace,
-                KeySymbol("r1".to_owned()),
-                Whitespace,
-                RelativeSymbol(5),
-                Comma,
-                Whitespace,
-                RelativeSymbol(3),
-                Newline,
-                Newline,
-                Whitespace,
-                KeySymbol("add".to_owned()),
-                Whitespace,
-                RelativeSymbol(0),
-                Comma,
-                Whitespace,
-                RelativeSymbol(9),
+                (RelativeSymbol(0), 0..2),
+                (Colon, 2..3),
+                (Whitespace, 3..4),
+                (RelativeSymbol(3), 4..6),
+                (Colon, 6..7),
+                (Whitespace, 7..8),
+                (KeySymbol("r1".to_owned()), 8..10),
+                (Whitespace, 10..11),
+                (RelativeSymbol(5), 11..13),
+                (Comma, 13..14),
+                (Whitespace, 14..15),
+                (RelativeSymbol(3), 15..17),
+                (Newline, 17..18),
+                (Newline, 18..19),
+                (Whitespace, 19..20),
+                (KeySymbol("add".to_owned()), 20..23),
+                (Whitespace, 23..24),
+                (RelativeSymbol(0), 24..26),
+                (Comma, 26..27),
+                (Whitespace, 27..28),
+                (RelativeSymbol(9), 28..30),
             ]
         )
     }
