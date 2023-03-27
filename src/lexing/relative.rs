@@ -229,7 +229,7 @@ mod tests {
     fn test_whitespace() {
         assert_eq!(
             lex("  \n\t "),
-            vec![(Whitespace, 0..2), (Newline, 2..3), (Whitespace, 3..5)]
+            vec![(Whitespace, 0..3), (Newline, 3..4), (Whitespace, 4..6)]
         )
     }
 
@@ -261,7 +261,7 @@ mod tests {
         );
         assert_eq!(
             lex("0e-1.45"),
-            vec![(FloatingPoint(HashableFloat(-1.45)), 0..8)]
+            vec![(FloatingPoint(HashableFloat(-1.45)), 0..7)]
         );
         assert_eq!(
             lex("0e-1.45e+2"),
@@ -294,9 +294,9 @@ mod tests {
                 (Newline, 5..6),
                 (KeySymbol(".word".to_owned()), 6..11),
                 (Newline, 11..12),
-                (KeySymbol(".word".to_owned()), 12..17),
-                (Newline, 17..18),
-                (KeySymbol(".word".to_owned()), 18..23),
+                (KeySymbol(".word".to_owned()), 12..19),
+                (Newline, 19..20),
+                (KeySymbol(".word".to_owned()), 20..27),
             ]
         )
     }

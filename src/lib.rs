@@ -273,16 +273,6 @@ mod tests {
                     // The matches and locations are in no particular order?
                     // TODO: Specify the order in which they should be?
                     Match {
-                        project1_occurrences: vec![Location {
-                            file: "C:/P1/file.txt".into(),
-                            span: 3..6
-                        }],
-                        project2_occurrences: vec![Location {
-                            file: "C:/P2/file.txt".into(),
-                            span: 0..3,
-                        }],
-                    },
-                    Match {
                         project1_occurrences: vec![
                             Location {
                                 file: "C:/P1/file.txt".into(),
@@ -297,6 +287,16 @@ mod tests {
                             file: "C:/P2/file.txt".into(),
                             span: 3..6
                         }]
+                    },
+                    Match {
+                        project1_occurrences: vec![Location {
+                            file: "C:/P1/file.txt".into(),
+                            span: 3..6
+                        }],
+                        project2_occurrences: vec![Location {
+                            file: "C:/P2/file.txt".into(),
+                            span: 0..3,
+                        }],
                     },
                 ]
             }]
