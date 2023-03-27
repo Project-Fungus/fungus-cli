@@ -93,16 +93,13 @@ fn choose_fingerprint(spanned_hashes: &[(u64, Range<usize>)], w: usize) -> Finge
             }
             _ => {
                 previously_picked_hash = Some(min_hash);
-                fingerprint_hashes.push(min_hash);
+                fingerprint_hashes.push(min_hash.clone());
             }
         }
     }
 
     Fingerprint {
         spanned_hashes: fingerprint_hashes
-            .iter()
-            .map(|&(x, y)| (*x, y.clone()))
-            .collect::<Vec<_>>(),
     }
 }
 
