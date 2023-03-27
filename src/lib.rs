@@ -157,8 +157,6 @@ fn fingerprint(
         }
         TokenizingStrategy::Relative => {
             let tokens = lex_relative(document.contents);
-            // TODO: Update relative lexer as well
-            let tokens = tokens.iter().map(|t| (t, 0..1)).collect::<Vec<_>>();
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
         }
     }
@@ -193,8 +191,8 @@ fn locations_to_matches<'a>(
     let grouped_locations = group_locations(locations);
 
     let mut matches = Vec::new();
-    for (project1, project1_occurrences) in grouped_locations.to_owned() {
-        for (project2, project2_occurrences) in grouped_locations.to_owned() {
+    for (&project1, project1_occurrences) in grouped_locations.iter() {
+        for (&project2, project2_occurrences) in grouped_locations.iter() {
             if project1 >= project2 {
                 continue;
             }
