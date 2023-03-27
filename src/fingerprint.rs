@@ -1,4 +1,7 @@
-use std::{hash::{Hash, Hasher}, ops::Range};
+use std::{
+    hash::{Hash, Hasher},
+    ops::Range,
+};
 
 use rustc_hash::FxHasher;
 
@@ -49,9 +52,7 @@ where
     // clear the hasher, it only returns the hash.
     let mut hasher = FxHasher::default();
 
-    let tokens = spanned_tokens
-    .iter()
-    .map(|(token, _)| token);
+    let tokens = spanned_tokens.iter().map(|(token, _)| token);
 
     for token in tokens {
         token.hash(&mut hasher);
@@ -59,9 +60,7 @@ where
 
     let hash = hasher.finish();
 
-    let spans = spanned_tokens
-        .iter()
-        .map(|(_, span)| span.clone());
+    let spans = spanned_tokens.iter().map(|(_, span)| span.clone());
 
     let combined_range = combine_spans(spans);
 

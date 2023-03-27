@@ -1,11 +1,13 @@
 use std::{collections::HashMap, ops::Range};
 
 use itertools::{peek_nth, PeekNth};
-use logos::{SpannedIter};
+use logos::SpannedIter;
 
 use super::Token::{self, *};
 
-pub fn parse<'source>(lexer: SpannedIter<'source, Token<'source>>) -> Vec<(Token<'source>, Range<usize>)> {
+pub fn parse<'source>(
+    lexer: SpannedIter<'source, Token<'source>>,
+) -> Vec<(Token<'source>, Range<usize>)> {
     Parser::new(lexer).parse()
 }
 

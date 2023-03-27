@@ -1,4 +1,7 @@
-use std::{hash::{Hash, Hasher}, ops::Range};
+use std::{
+    hash::{Hash, Hasher},
+    ops::Range,
+};
 
 use logos::{Lexer, Logos};
 

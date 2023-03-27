@@ -16,10 +16,15 @@ fn detect_plagiarism_bytes(
 
     for (index, document) in documents.iter().enumerate() {
         // Use bytes instead of chars since it shouldn't affect the result and is faster.
-        let characters = document.as_bytes();
+        let characters = document
+            .as_bytes()
+            .into_iter()
+            .enumerate()
+            .map(|(index, &byte)| (byte, index..index + 1))
+            .collect::<Vec<_>>();
 
         let fingerprint =
-            fingerprint::fingerprint(noise_threshold, guarantee_threshold, characters);
+            fingerprint::fingerprint(noise_threshold, guarantee_threshold, &characters);
 
         for hash in fingerprint.spanned_hashes {
             match hashes_seen.get(&hash) {
