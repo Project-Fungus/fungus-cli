@@ -253,35 +253,49 @@ mod tests {
 
     #[test]
     fn simple_sentences() {
-        let file1 = File::new("P1", "C:/P1/file.txt".into(), "aaabbb aaa");
+        let file1 = File::new("P1", "C:/P1/file.txt".into(), "aaabbbzyxaaa");
         let file2 = File::new("P2", "C:/P2/file.txt".into(), "bbbaaa");
         let file3 = File::new("P3", "C:/P3/file.txt".into(), "acb");
 
         let documents = vec![&file1, &file2, &file3];
-        let matches = detect_plagiarism(2, 3, TokenizingStrategy::Bytes, &documents, 0);
+        let matches = detect_plagiarism(3, 3, TokenizingStrategy::Bytes, &documents, 0);
 
         assert_eq!(
             matches,
             vec![ProjectPair {
-                project1: "String 1",
-                project2: "String 2",
-                num_matches: 1,
-                matches: vec![Match {
-                    project1_occurrences: vec![
-                        Location {
+                project1: "P1",
+                project2: "P2",
+                num_matches: 2,
+                matches: vec![
+                    // The matches and locations are in no particular order?
+                    // TODO: Specify the order in which they should be?
+                    Match {
+                        project1_occurrences: vec![Location {
                             file: "C:/P1/file.txt".into(),
-                            span: 0..3
-                        },
-                        Location {
-                            file: "C:/P1/file.txt".into(),
-                            span: 7..10
-                        }
-                    ],
-                    project2_occurrences: vec![Location {
-                        file: "C:/P2/file.txt".into(),
-                        span: 3..6
-                    }]
-                }]
+                            span: 3..6
+                        }],
+                        project2_occurrences: vec![Location {
+                            file: "C:/P2/file.txt".into(),
+                            span: 0..3,
+                        }],
+                    },
+                    Match {
+                        project1_occurrences: vec![
+                            Location {
+                                file: "C:/P1/file.txt".into(),
+                                span: 0..3
+                            },
+                            Location {
+                                file: "C:/P1/file.txt".into(),
+                                span: 9..12
+                            }
+                        ],
+                        project2_occurrences: vec![Location {
+                            file: "C:/P2/file.txt".into(),
+                            span: 3..6
+                        }]
+                    },
+                ]
             }]
         );
     }
