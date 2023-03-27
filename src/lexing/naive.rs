@@ -1,6 +1,6 @@
-use std::hash::{Hash, Hasher};
+use std::{hash::{Hash, Hasher}, ops::Range};
 
-use logos::{Lexer, Logos, Span};
+use logos::{Lexer, Logos};
 
 // Implemented using information from the [GNU assembler documentation](https://sourceware.org/binutils/docs/as/)
 // and the [ARM developer documentation](https://developer.arm.com/documentation/).
@@ -129,7 +129,7 @@ pub enum Token<'source> {
 }
 
 #[must_use]
-pub fn lex(s: &str) -> Vec<(Token, Span)> {
+pub fn lex(s: &str) -> Vec<(Token, Range<usize>)> {
     Token::lexer(s).spanned().collect()
 }
 

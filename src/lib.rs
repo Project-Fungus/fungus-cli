@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::PathBuf;
 
 use clap::ValueEnum;
@@ -7,7 +8,6 @@ use identity_hash::IdentityHashMap;
 use itertools::Itertools;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
-use logos::Span;
 use serde::Serialize;
 
 pub mod fingerprint;
@@ -37,10 +37,10 @@ pub struct File<'a> {
 }
 
 impl<'a> File<'a> {
-    pub fn new(project_name: &'a str, name: PathBuf, contents: &'a str) -> File<'a> {
+    pub fn new(project_name: &'a str, path: PathBuf, contents: &'a str) -> File<'a> {
         File {
             project_name,
-            path: name,
+            path,
             contents,
         }
     }
@@ -76,7 +76,7 @@ pub struct Location {
     /// File in which the code snippet is found.
     file: PathBuf,
     /// Position of the code snippet within the file (in bytes).
-    span: Span,
+    span: Range<usize>,
 }
 
 /// Detects matches between files in different projects and constructs a summary of the results.
@@ -164,11 +164,12 @@ fn fingerprint(
     }
 }
 
-fn build_hash_database<'a, I>(fingerprints: I) -> IdentityHashMap<Vec<(&'a File<'a>, Span)>>
+fn build_hash_database<'a, I>(fingerprints: I) -> IdentityHashMap<Vec<(&'a File<'a>, Range<usize>)>>
 where
     I: IntoIterator<Item = (&'a File<'a>, Fingerprint)>,
 {
-    let mut hash_locations: IdentityHashMap<Vec<(&File, Span)>> = IdentityHashMap::default();
+    let mut hash_locations: IdentityHashMap<Vec<(&File, Range<usize>)>> =
+        IdentityHashMap::default();
 
     for (doc, fingerprint) in fingerprints.into_iter() {
         for (hash, span) in fingerprint.spanned_hashes {
@@ -186,7 +187,9 @@ where
     hash_locations
 }
 
-fn locations_to_matches<'a>(locations: &[(&'a File<'a>, Span)]) -> Vec<(&'a str, &'a str, Match)> {
+fn locations_to_matches<'a>(
+    locations: &[(&'a File<'a>, Range<usize>)],
+) -> Vec<(&'a str, &'a str, Match)> {
     let grouped_locations = group_locations(locations);
 
     let mut matches = Vec::new();
@@ -207,7 +210,9 @@ fn locations_to_matches<'a>(locations: &[(&'a File<'a>, Span)]) -> Vec<(&'a str,
     matches
 }
 
-fn group_locations<'a>(locations: &[(&'a File<'a>, Span)]) -> HashMap<&'a str, Vec<Location>> {
+fn group_locations<'a>(
+    locations: &[(&'a File<'a>, Range<usize>)],
+) -> HashMap<&'a str, Vec<Location>> {
     let mut grouped_locations: HashMap<&str, Vec<Location>> = HashMap::default();
 
     for (file, span) in locations {

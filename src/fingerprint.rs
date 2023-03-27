@@ -1,10 +1,9 @@
-use std::hash::{Hash, Hasher};
+use std::{hash::{Hash, Hasher}, ops::Range};
 
-use logos::Span;
 use rustc_hash::FxHasher;
 
 pub struct Fingerprint {
-    pub spanned_hashes: Vec<(u64, Span)>,
+    pub spanned_hashes: Vec<(u64, Range<usize>)>,
 }
 
 /// Generates a `Fingerprint` for the given list of tokens using the winnowing algorithm.
@@ -19,10 +18,9 @@ pub struct Fingerprint {
 ///
 /// Panics if `k` is greater than `t` or if `k` is 0.
 #[inline]
-pub fn fingerprint<T>(k: usize, t: usize, tokens: &[(T, Span)]) -> Fingerprint
+pub fn fingerprint<T>(k: usize, t: usize, tokens: &[(T, Range<usize>)]) -> Fingerprint
 where
     T: Hash,
-    T: Clone,
 {
     assert!(k <= t);
     assert!(k != 0);
@@ -43,40 +41,52 @@ where
 }
 
 #[inline]
-fn hash_window<T>(spanned_tokens: &[(T, Span)]) -> (u64, Span)
+fn hash_window<T>(spanned_tokens: &[(T, Range<usize>)]) -> (u64, Range<usize>)
 where
     T: Hash,
-    T: Clone,
 {
     // IMPORTANT: create a new hasher each time because hasher.finish() does NOT
     // clear the hasher, it only returns the hash.
     let mut hasher = FxHasher::default();
 
-    // TODO: Better approach than cloning?
-    let (tokens, spans): (Vec<T>, Vec<Span>) = spanned_tokens.iter().cloned().unzip();
+    let tokens = spanned_tokens
+    .iter()
+    .map(|(token, _)| token);
 
-    tokens.hash(&mut hasher);
+    for token in tokens {
+        token.hash(&mut hasher);
+    }
+
     let hash = hasher.finish();
 
-    let combined_range = combine_spans(&spans);
+    let spans = spanned_tokens
+        .iter()
+        .map(|(_, span)| span.clone());
+
+    let combined_range = combine_spans(spans);
 
     (hash, combined_range)
 }
 
-fn combine_spans(spans: &[Span]) -> Span {
-    // TODO: Handle empty list better
-    let first = spans.first().unwrap();
-    let last = spans.last().unwrap();
+#[inline]
+fn combine_spans(mut spans: impl Iterator<Item = Range<usize>>) -> Range<usize> {
+    // Safe to unwrap since this function is only called with non-empty iterators.
+    let mut result = spans.next().unwrap();
 
-    first.start..last.end
+    for span in spans {
+        result.end = span.end;
+    }
+
+    result
 }
 
-fn choose_fingerprint(spanned_hashes: &[(u64, Span)], w: usize) -> Fingerprint {
+#[inline]
+fn choose_fingerprint(spanned_hashes: &[(u64, Range<usize>)], w: usize) -> Fingerprint {
     let mut fingerprint_hashes = vec![];
-    let mut previously_picked_hash: Option<&(u64, Span)> = None;
+    let mut previously_picked_hash: Option<&(u64, Range<usize>)> = None;
 
     for window in spanned_hashes.windows(w) {
-        let min_hash = smallest_hash(window);
+        let min_hash = window.iter().min_by_key(|&(hash, _)| hash).unwrap();
 
         match previously_picked_hash {
             Some(previously_picked_hash) if previously_picked_hash.0 == min_hash.0 => {
@@ -95,18 +105,6 @@ fn choose_fingerprint(spanned_hashes: &[(u64, Span)], w: usize) -> Fingerprint {
             .map(|&(x, y)| (*x, y.clone()))
             .collect::<Vec<_>>(),
     }
-}
-
-fn smallest_hash(spanned_hashes: &[(u64, Span)]) -> &(u64, Span) {
-    let mut min_tuple = spanned_hashes.first().unwrap();
-
-    for sh in spanned_hashes {
-        if sh.0 <= min_tuple.0 {
-            min_tuple = sh;
-        }
-    }
-
-    min_tuple
 }
 
 #[cfg(test)]
@@ -149,6 +147,6 @@ mod fingerprint_tests {
         let hashes = vec![(1, 0..1), (1, 1..2), (1, 2..3), (1, 3..4), (1, 4..5)];
         let w = 2;
         let fingerprint = choose_fingerprint(&hashes, w);
-        assert_eq!(fingerprint.spanned_hashes, vec![(1, 1..2)]);
+        assert_eq!(fingerprint.spanned_hashes, vec![(1, 0..1)]);
     }
 }
