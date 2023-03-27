@@ -26,6 +26,9 @@ struct Args {
     /// Whether the JSON output should be pretty-printed
     #[arg(short, long, default_value_t = false)]
     pretty: bool,
+    /// Output file
+    #[arg(short, long, default_value = "./fungus-output.json")]
+    output_file: PathBuf,
 }
 
 #[derive(Serialize)]
@@ -69,7 +72,7 @@ fn main() -> anyhow::Result<()> {
 
     let output = Output { project_pairs };
 
-    output_matches(output, args.pretty);
+    output_matches(output, &args.output_file, args.pretty)?;
 
     Ok(())
 }
@@ -99,12 +102,17 @@ fn get_contents(path: &DirEntry) -> anyhow::Result<(PathBuf, String)> {
     }
 }
 
-fn output_matches(output: Output, pretty: bool) {
+fn output_matches(output: Output, output_file: &PathBuf, pretty: bool) -> anyhow::Result<()> {
     let json = if pretty {
         serde_json::to_string_pretty(&output).unwrap()
     } else {
         serde_json::to_string(&output).unwrap()
     };
 
-    println!("{json}");
+    fs::write(output_file, json)
+        .with_context(|| format!("Failed to write output to \"{}\".", output_file.display()))?;
+
+    println!("Wrote output to \"{}\".", output_file.display());
+
+    Ok(())
 }
