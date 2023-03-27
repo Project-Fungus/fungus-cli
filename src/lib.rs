@@ -144,7 +144,11 @@ fn fingerprint(
             // Use bytes instead of chars since it shouldn't affect the result and is faster.
             let characters = document.contents.as_bytes();
             // TODO: More efficient way of doing this?
-            let characters = characters.iter().map(|&c| (c, 0..0)).collect::<Vec<_>>();
+            let characters = characters
+                .iter()
+                .enumerate()
+                .map(|(i, &c)| (c, i..i + 1))
+                .collect::<Vec<_>>();
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &characters)
         }
         TokenizingStrategy::Naive => {
