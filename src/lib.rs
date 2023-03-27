@@ -1,6 +1,10 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+
 use clap::ValueEnum;
 use fingerprint::Fingerprint;
 use identity_hash::IdentityHashMap;
+use itertools::Itertools;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
 use logos::Span;
@@ -27,46 +31,55 @@ pub enum TokenizingStrategy {
 #[derive(Debug, Eq, PartialEq, Serialize)]
 pub struct File<'a> {
     project_name: &'a str,
-    name: &'a str,
+    path: PathBuf,
     #[serde(skip_serializing)]
     contents: &'a str,
 }
 
 impl<'a> File<'a> {
-    pub fn new(project_name: &'a str, name: &'a str, contents: &'a str) -> File<'a> {
+    pub fn new(project_name: &'a str, name: PathBuf, contents: &'a str) -> File<'a> {
         File {
             project_name,
-            name,
+            path: name,
             contents,
         }
     }
 }
 
+/// Contains information about the similarity of two projects.
 #[derive(Debug, Eq, PartialEq, Serialize)]
-pub struct Match<'a> {
-    file1: &'a File<'a>,
-    file1_spans: Vec<Span>,
-    file2: &'a File<'a>,
-    file2_spans: Vec<Span>,
+pub struct ProjectPair<'a> {
+    /// Name of the first project.
+    project1: &'a str,
+    /// Name of the second project.
+    project2: &'a str,
+    /// Number of matches detected between the two projects.
+    ///
+    /// This counts distinct hashes that match between the two projects (e.g., if project 1 contains the hash twice and project 3 has the same hash three times, that is just one match).
+    num_matches: usize,
+    /// Matches between the two projects.
+    matches: Vec<Match>,
 }
 
-impl<'a> Match<'a> {
-    pub fn new(
-        file1: &'a File<'a>,
-        file1_spans: Vec<Span>,
-        file2: &'a File<'a>,
-        file2_spans: Vec<Span>,
-    ) -> Match<'a> {
-        Match {
-            file1,
-            file1_spans,
-            file2,
-            file2_spans,
-        }
-    }
+/// Contains information about a specific code snippet that is shared between two projects.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct Match {
+    /// List of places in which the code snippet appears in project 1.
+    project1_occurrences: Vec<Location>,
+    /// List of places in which the code snipet appears in project 2.
+    project2_occurrences: Vec<Location>,
 }
 
-/// Returns a list of matches.
+/// Absolute reference to a code snippet.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct Location {
+    /// File in which the code snippet is found.
+    file: PathBuf,
+    /// Position of the code snippet within the file (in bytes).
+    span: Span,
+}
+
+/// Detects matches between files in different projects and constructs a summary of the results.
 ///
 /// Matches of length less than `noise_threshold` are guaranteed to be ignored.
 /// Matches of length at least `guarantee_threshold` are guaranteed to be included.
@@ -75,8 +88,8 @@ pub fn detect_plagiarism<'a>(
     guarantee_threshold: usize,
     tokenizing_strategy: TokenizingStrategy,
     documents: &'a [&File<'a>],
-) -> Vec<Match<'a>> {
-    let document_fingerprints = documents.iter().map(|d| {
+) -> Vec<ProjectPair<'a>> {
+    let document_fingerprints = documents.iter().map(|&d| {
         (
             d,
             fingerprint(
@@ -88,30 +101,34 @@ pub fn detect_plagiarism<'a>(
         )
     });
 
-    let mut matches = Vec::new();
-    let mut hash_locations: IdentityHashMap<Vec<(&File, Vec<Span>)>> = IdentityHashMap::default();
+    let hash_locations = build_hash_database(document_fingerprints);
 
-    for (document, fingerprint) in document_fingerprints {
-        let hash_locations_for_file = expand_fingerprint(document, fingerprint);
-        for (&hash, (file, spans)) in hash_locations_for_file.iter() {
-            match hash_locations.get_mut(&hash) {
+    let mut project_pairs: HashMap<(&str, &str), Vec<Match>> = HashMap::default();
+    for (_, locations) in hash_locations.iter() {
+        let matches = locations_to_matches(locations);
+
+        for (project1, project2, m) in matches {
+            match project_pairs.get_mut(&(project1, project2)) {
                 None => {
-                    hash_locations.insert(hash, vec![(file, spans.clone())]);
+                    project_pairs.insert((project1, project2), vec![m]);
                 }
-                Some(locations) if locations.is_empty() => {
-                    locations.push((file, spans.clone()));
-                }
-                Some(locations) => {
-                    for (other_file, other_spans) in locations {
-                        let m = Match::new(other_file, other_spans.clone(), file, spans.clone());
-                        matches.push(m);
-                    }
+                Some(lst) => {
+                    lst.push(m);
                 }
             }
         }
     }
 
-    matches
+    project_pairs
+        .iter()
+        .map(|((p1, p2), matches)| ProjectPair {
+            project1: p1,
+            project2: p2,
+            num_matches: matches.len(),
+            matches: matches.to_owned(),
+        })
+        .sorted_unstable_by(|x, y| y.num_matches.cmp(&x.num_matches))
+        .collect()
 }
 
 fn fingerprint(
@@ -141,24 +158,68 @@ fn fingerprint(
     }
 }
 
-fn expand_fingerprint<'a>(
-    document: &'a File<'a>,
-    fingerprint: Fingerprint,
-) -> IdentityHashMap<(&'a File<'a>, Vec<Span>)> {
-    let mut hash_locations = IdentityHashMap::default();
+fn build_hash_database<'a, I>(fingerprints: I) -> IdentityHashMap<Vec<(&'a File<'a>, Span)>>
+where
+    I: IntoIterator<Item = (&'a File<'a>, Fingerprint)>,
+{
+    let mut hash_locations: IdentityHashMap<Vec<(&File, Span)>> = IdentityHashMap::default();
 
-    for (hash, span) in fingerprint.spanned_hashes {
-        match hash_locations.get_mut(&hash) {
-            None => {
-                hash_locations.insert(hash, (document, vec![span]));
-            }
-            Some((_, spans)) => {
-                spans.push(span);
+    for (doc, fingerprint) in fingerprints.into_iter() {
+        for (hash, span) in fingerprint.spanned_hashes {
+            match hash_locations.get_mut(&hash) {
+                None => {
+                    hash_locations.insert(hash, vec![(doc, span)]);
+                }
+                Some(lst) => {
+                    lst.push((doc, span));
+                }
             }
         }
     }
 
     hash_locations
+}
+
+fn locations_to_matches<'a>(locations: &[(&'a File<'a>, Span)]) -> Vec<(&'a str, &'a str, Match)> {
+    let grouped_locations = group_locations(locations);
+
+    let mut matches = Vec::new();
+    for (project1, project1_occurrences) in grouped_locations.to_owned() {
+        for (project2, project2_occurrences) in grouped_locations.to_owned() {
+            if project1 >= project2 {
+                continue;
+            }
+
+            let m = Match {
+                project1_occurrences: project1_occurrences.to_owned(),
+                project2_occurrences: project2_occurrences.to_owned(),
+            };
+            matches.push((project1, project2, m));
+        }
+    }
+
+    matches
+}
+
+fn group_locations<'a>(locations: &[(&'a File<'a>, Span)]) -> HashMap<&'a str, Vec<Location>> {
+    let mut grouped_locations: HashMap<&str, Vec<Location>> = HashMap::default();
+
+    for (file, span) in locations {
+        let location = Location {
+            file: file.path.to_owned(),
+            span: span.to_owned(),
+        };
+        match grouped_locations.get_mut(file.project_name) {
+            None => {
+                grouped_locations.insert(file.project_name, vec![location]);
+            }
+            Some(lst) => {
+                lst.push(location);
+            }
+        }
+    }
+
+    grouped_locations
 }
 
 #[cfg(test)]
@@ -170,11 +231,14 @@ mod tests {
         let moby_dick = include_str!("../benches/moby_dick.txt");
 
         // Split Moby Dick into its chapters
-        let chapters = moby_dick.split("CHAPTER").collect::<Vec<_>>();
+        let chapters = moby_dick
+            .split("CHAPTER")
+            .enumerate()
+            .map(|(i, x)| (format!("Moby Dick Chapter {i}"), x))
+            .collect::<Vec<_>>();
         let documents = chapters
             .iter()
-            .enumerate()
-            .map(|(_, &s)| File::new("Moby Dick", "Chapter", s))
+            .map(|(project_name, contents)| File::new(project_name, "Chapter".into(), contents))
             .collect::<Vec<_>>();
         let document_references = documents.iter().collect::<Vec<_>>();
         let matches = detect_plagiarism(25, 50, TokenizingStrategy::Bytes, &document_references);
@@ -183,19 +247,36 @@ mod tests {
 
     #[test]
     fn simple_sentences() {
-        let file1 = File::new("String 1", "String 1", "aaabbb");
-        let file2 = File::new("String 2", "String 2", "bbbaaa");
-        let file3 = File::new("String 3", "String 3", "acb");
+        let file1 = File::new("P1", "C:/P1/file.txt".into(), "aaabbb aaa");
+        let file2 = File::new("P2", "C:/P2/file.txt".into(), "bbbaaa");
+        let file3 = File::new("P3", "C:/P3/file.txt".into(), "acb");
 
         let documents = vec![&file1, &file2, &file3];
         let matches = detect_plagiarism(2, 3, TokenizingStrategy::Bytes, &documents);
 
         assert_eq!(
             matches,
-            vec![
-                Match::new(&file1, vec![0..3], &file2, vec![3..6]),
-                Match::new(&file1, vec![3..6], &file2, vec![0..3])
-            ]
+            vec![ProjectPair {
+                project1: "String 1",
+                project2: "String 2",
+                num_matches: 1,
+                matches: vec![Match {
+                    project1_occurrences: vec![
+                        Location {
+                            file: "C:/P1/file.txt".into(),
+                            span: 0..3
+                        },
+                        Location {
+                            file: "C:/P1/file.txt".into(),
+                            span: 7..10
+                        }
+                    ],
+                    project2_occurrences: vec![Location {
+                        file: "C:/P2/file.txt".into(),
+                        span: 3..6
+                    }]
+                }]
+            }]
         );
     }
 }

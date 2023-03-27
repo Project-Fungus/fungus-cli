@@ -1,11 +1,12 @@
 use anyhow::Context;
 use clap::Parser;
+use serde::Serialize;
 use std::{
     fs::{self, DirEntry},
     path::PathBuf,
 };
 
-use manual_analyzer::{detect_plagiarism, File, Match, TokenizingStrategy};
+use manual_analyzer::{detect_plagiarism, File, ProjectPair, TokenizingStrategy};
 
 /// A simple copy detection tool for the ARM assembly language.
 #[derive(Parser, Debug)]
@@ -22,6 +23,14 @@ struct Args {
     /// Tokenizing strategy to use. Can be one of "bytes", "naive", or "relative".
     #[arg(value_enum, short, long, default_value = "bytes")]
     tokenizing_strategy: TokenizingStrategy,
+    /// Whether the JSON output should be pretty-printed
+    #[arg(short, long, default_value_t = false)]
+    pretty: bool,
+}
+
+#[derive(Serialize)]
+struct Output<'a> {
+    project_pairs: Vec<ProjectPair<'a>>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -44,21 +53,23 @@ fn main() -> anyhow::Result<()> {
         .map(get_contents)
         .collect::<Result<Vec<_>, _>>()?;
 
-    // TODO: fingerprint files, not projects (so that the spans are meaningful)
+    // TODO: fingerprint files, not projects (so that the spans are meaningful when there are multiple files per project)
     let documents = project_contents
         .iter()
-        .map(|(path, contents)| File::new(path.to_str().unwrap(), path.to_str().unwrap(), contents))
+        .map(|(path, contents)| File::new(path.to_str().unwrap(), path.to_owned(), contents))
         .collect::<Vec<_>>();
     let document_references = documents.iter().collect::<Vec<_>>();
 
-    let matches = detect_plagiarism(
+    let project_pairs = detect_plagiarism(
         args.noise,
         args.guarantee,
         args.tokenizing_strategy,
         &document_references,
     );
 
-    output_matches(matches);
+    let output = Output { project_pairs };
+
+    output_matches(output, args.pretty);
 
     Ok(())
 }
@@ -88,12 +99,12 @@ fn get_contents(path: &DirEntry) -> anyhow::Result<(PathBuf, String)> {
     }
 }
 
-fn output_matches(matches: Vec<Match>) {
-    if matches.is_empty() {
-        println!("No matches found.");
+fn output_matches(output: Output, pretty: bool) {
+    let json = if pretty {
+        serde_json::to_string_pretty(&output).unwrap()
     } else {
-        let json = serde_json::to_string_pretty(&matches).unwrap();
+        serde_json::to_string(&output).unwrap()
+    };
 
-        println!("{json}");
-    }
+    println!("{json}");
 }
