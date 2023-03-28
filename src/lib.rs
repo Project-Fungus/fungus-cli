@@ -28,11 +28,9 @@ pub enum TokenizingStrategy {
     Relative,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
 pub struct File<'a> {
     project_name: &'a str,
     path: PathBuf,
-    #[serde(skip_serializing)]
     contents: &'a str,
 }
 
