@@ -129,7 +129,7 @@ pub fn detect_plagiarism<'a>(
             matches: matches.to_owned(),
         })
         .filter(|p| p.num_matches >= min_matches)
-        .sorted_unstable_by(|x, y| y.num_matches.cmp(&x.num_matches))
+        .sorted_unstable_by_key(|p| p.num_matches)
         .collect()
 }
 
