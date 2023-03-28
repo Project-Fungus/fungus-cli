@@ -99,7 +99,7 @@ fn choose_fingerprint(spanned_hashes: &[(u64, Range<usize>)], w: usize) -> Finge
     }
 
     Fingerprint {
-        spanned_hashes: fingerprint_hashes
+        spanned_hashes: fingerprint_hashes,
     }
 }
 
