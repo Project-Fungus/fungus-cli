@@ -1,17 +1,19 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
 
 use itertools::{peek_nth, PeekNth};
-use logos::Lexer;
+use logos::SpannedIter;
 
 use super::Token::{self, *};
 
-pub fn parse<'source>(lexer: Lexer<'source, Token<'source>>) -> Vec<Token<'source>> {
+pub fn parse<'source>(
+    lexer: SpannedIter<'source, Token<'source>>,
+) -> Vec<(Token<'source>, Range<usize>)> {
     Parser::new(lexer).parse()
 }
 
 struct Parser<'source> {
-    lexer: PeekNth<Lexer<'source, Token<'source>>>,
-    result: Vec<Token<'source>>,
+    lexer: PeekNth<SpannedIter<'source, Token<'source>>>,
+    result: Vec<(Token<'source>, Range<usize>)>,
     /// The number of tokens consumed so far
     token_count: usize,
     /// Maps symbol names to the last token index at which they were encountered
@@ -20,7 +22,7 @@ struct Parser<'source> {
 
 impl<'source> Parser<'source> {
     #[inline]
-    fn new(lexer: Lexer<'source, Token<'source>>) -> Self {
+    fn new(lexer: SpannedIter<'source, Token<'source>>) -> Self {
         Self {
             lexer: peek_nth(lexer),
             result: Vec::new(),
@@ -30,7 +32,7 @@ impl<'source> Parser<'source> {
     }
 
     #[inline]
-    fn parse(mut self) -> Vec<Token<'source>> {
+    fn parse(mut self) -> Vec<(Token<'source>, Range<usize>)> {
         while self.peek().is_some() {
             self.parse_statement()
         }
@@ -39,14 +41,14 @@ impl<'source> Parser<'source> {
     }
 
     #[inline]
-    fn next(&mut self) -> Option<Token<'source>> {
+    fn next(&mut self) -> Option<(Token<'source>, Range<usize>)> {
         let t = self.lexer.next();
         self.token_count += 1;
         t
     }
 
     #[inline]
-    fn peek(&mut self) -> Option<&Token<'source>> {
+    fn peek(&mut self) -> Option<&(Token<'source>, Range<usize>)> {
         self.lexer.peek()
     }
 
@@ -72,43 +74,43 @@ impl<'source> Parser<'source> {
         // Replace instructions and directives with `KeySymbol` tokens
 
         // Parse zero or more labels followed by a key symbol
-        while let Some(t) = self.next() {
+        while let Some((t, span)) = self.next() {
             match t {
                 Newline => {
-                    self.result.push(t);
+                    self.result.push((t, span));
                     return;
                 }
                 Symbol(s) => {
                     // If the next token is a colon, this is a label, keep looking for a key symbol
-                    if let Some(Colon) = self.peek() {
+                    if let Some((Colon, _)) = self.peek() {
                         let relative_symbol = self.relative_symbol(s);
-                        self.result.push(relative_symbol);
+                        self.result.push((relative_symbol, span));
                     } else {
                         // This is a key symbol, stop looking for a key symbol
-                        self.result.push(KeySymbol(s));
+                        self.result.push((KeySymbol(s), span));
                         break;
                     }
                 }
                 // All other tokens, even syntactically invalid ones are ignored and returned without modifications
                 t => {
-                    self.result.push(t);
+                    self.result.push((t, span));
                 }
             }
         }
 
         // Keep parsing the end of the statement until the next newline
-        while let Some(t) = self.next() {
+        while let Some((t, span)) = self.next() {
             match t {
                 Newline => {
-                    self.result.push(t);
+                    self.result.push((t, span));
                     return;
                 }
                 Symbol(s) => {
                     let relative_symbol = self.relative_symbol(s);
-                    self.result.push(relative_symbol);
+                    self.result.push((relative_symbol, span));
                 }
                 t => {
-                    self.result.push(t);
+                    self.result.push((t, span));
                 }
             }
         }

@@ -422,6 +422,8 @@ dependencies = [
  "itertools",
  "logos",
  "rustc-hash",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
