@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use clap::ValueEnum;
 use fingerprint::Fingerprint;
 use identity_hash::IdentityHashMap;
-use itertools::Itertools;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
 use serde::Serialize;
@@ -121,7 +120,7 @@ pub fn detect_plagiarism<'a>(
         }
     }
 
-    project_pairs
+    let mut project_pairs = project_pairs
         .iter()
         .map(|((p1, p2), matches)| ProjectPair {
             project1: p1,
@@ -130,8 +129,9 @@ pub fn detect_plagiarism<'a>(
             matches: matches.to_owned(),
         })
         .filter(|p| p.num_matches >= min_matches)
-        .sorted_unstable_by_key(|p| p.num_matches)
-        .collect()
+        .collect();
+    sort_output(&mut project_pairs);
+    project_pairs
 }
 
 /// Produces the fingerprint for a single file using the given tokenization strategy.
@@ -235,17 +235,41 @@ fn group_locations<'a>(
     grouped_locations
 }
 
+/// Sorts the project pairs, the matches, and the locations.
+fn sort_output(project_pairs: &mut Vec<ProjectPair>) {
+    project_pairs.sort_unstable_by_key(|p| p.num_matches);
+
+    for pp in project_pairs {
+        for m in pp.matches.iter_mut() {
+            m.project1_occurrences.sort_unstable_by(|l1, l2| {
+                (&l1.file, l1.span.start).cmp(&(&l2.file, l2.span.start))
+            });
+            m.project2_occurrences.sort_unstable_by(|l1, l2| {
+                (&l1.file, l1.span.start).cmp(&(&l2.file, l2.span.start))
+            });
+        }
+
+        pp.matches.sort_unstable_by(|m1, m2| {
+            let m1_first_location = m1.project1_occurrences.first().unwrap();
+            let m2_first_location = m2.project1_occurrences.first().unwrap();
+            (&m1_first_location.file, m1_first_location.span.start)
+                .cmp(&(&m2_first_location.file, m2_first_location.span.start))
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn simple_sentences() {
-        let file1 = File::new("P1", "C:/P1/file.txt".into(), "aaabbbzyxaaa");
-        let file2 = File::new("P2", "C:/P2/file.txt".into(), "bbbaaa");
-        let file3 = File::new("P3", "C:/P3/file.txt".into(), "acb");
+        let file3 = File::new("P1", "C:/P1/file1.txt".into(), "aaa");
+        let file1 = File::new("P1", "C:/P1/file2.txt".into(), "aaabbbzyxaaa123ccc");
+        let file2 = File::new("P2", "C:/P2/file.txt".into(), "bbbaaaccc");
+        let file4 = File::new("P3", "C:/P3/file.txt".into(), "acb");
 
-        let documents = vec![&file1, &file2, &file3];
+        let documents = vec![&file1, &file2, &file3, &file4];
         let matches = detect_plagiarism(3, 3, TokenizingStrategy::Bytes, &documents, 0);
 
         assert_eq!(
@@ -253,18 +277,20 @@ mod tests {
             vec![ProjectPair {
                 project1: "P1",
                 project2: "P2",
-                num_matches: 2,
+                num_matches: 3,
                 matches: vec![
-                    // The matches and locations are in no particular order?
-                    // TODO: Specify the order in which they should be?
                     Match {
                         project1_occurrences: vec![
                             Location {
-                                file: "C:/P1/file.txt".into(),
+                                file: "C:/P1/file1.txt".into(),
                                 span: 0..3
                             },
                             Location {
-                                file: "C:/P1/file.txt".into(),
+                                file: "C:/P1/file2.txt".into(),
+                                span: 0..3
+                            },
+                            Location {
+                                file: "C:/P1/file2.txt".into(),
                                 span: 9..12
                             }
                         ],
@@ -275,7 +301,7 @@ mod tests {
                     },
                     Match {
                         project1_occurrences: vec![Location {
-                            file: "C:/P1/file.txt".into(),
+                            file: "C:/P1/file2.txt".into(),
                             span: 3..6
                         }],
                         project2_occurrences: vec![Location {
@@ -283,6 +309,16 @@ mod tests {
                             span: 0..3,
                         }],
                     },
+                    Match {
+                        project1_occurrences: vec![Location {
+                            file: "C:/P1/file2.txt".into(),
+                            span: 15..18,
+                        }],
+                        project2_occurrences: vec![Location {
+                            file: "C:/P2/file.txt".into(),
+                            span: 6..9
+                        }],
+                    }
                 ]
             }]
         );
