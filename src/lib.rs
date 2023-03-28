@@ -236,25 +236,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn moby_dick() {
-        let moby_dick = include_str!("../benches/moby_dick.txt");
-
-        // Split Moby Dick into its chapters
-        let chapters = moby_dick
-            .split("CHAPTER")
-            .enumerate()
-            .map(|(i, x)| (format!("Moby Dick Chapter {i}"), x))
-            .collect::<Vec<_>>();
-        let documents = chapters
-            .iter()
-            .map(|(project_name, contents)| File::new(project_name, "Chapter".into(), contents))
-            .collect::<Vec<_>>();
-        let document_references = documents.iter().collect::<Vec<_>>();
-        let matches = detect_plagiarism(25, 50, TokenizingStrategy::Bytes, &document_references, 0);
-        println!("{} matches found!", matches.len());
-    }
-
-    #[test]
     fn simple_sentences() {
         let file1 = File::new("P1", "C:/P1/file.txt".into(), "aaabbbzyxaaa");
         let file2 = File::new("P2", "C:/P2/file.txt".into(), "bbbaaa");
