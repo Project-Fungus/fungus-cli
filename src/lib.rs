@@ -88,6 +88,7 @@ pub fn detect_plagiarism<'a>(
     documents: &'a [&File<'a>],
     min_matches: usize,
 ) -> Vec<ProjectPair<'a>> {
+    // Fingerprint individual files
     let document_fingerprints = documents.iter().map(|&d| {
         (
             d,
@@ -100,8 +101,10 @@ pub fn detect_plagiarism<'a>(
         )
     });
 
+    // Map hashes to their locations
     let hash_locations = build_hash_database(document_fingerprints);
 
+    // Turn each set of locations that share a hash into a set of "matches" between distinct projects
     let mut project_pairs: HashMap<(&str, &str), Vec<Match>> = HashMap::default();
     for (_, locations) in hash_locations.iter() {
         let matches = locations_to_matches(locations);
@@ -131,6 +134,7 @@ pub fn detect_plagiarism<'a>(
         .collect()
 }
 
+/// Produces the fingerprint for a single file using the given tokenization strategy.
 fn fingerprint(
     document: &File,
     tokenizing_strategy: &TokenizingStrategy,
@@ -141,7 +145,6 @@ fn fingerprint(
         TokenizingStrategy::Bytes => {
             // Use bytes instead of chars since it shouldn't affect the result and is faster.
             let characters = document.contents.as_bytes();
-            // TODO: More efficient way of doing this?
             let characters = characters
                 .iter()
                 .enumerate()
@@ -160,6 +163,7 @@ fn fingerprint(
     }
 }
 
+/// Constructs a "hash database" that maps a hash to all the locations in which it was found in the code.
 fn build_hash_database<'a, I>(fingerprints: I) -> IdentityHashMap<Vec<(&'a File<'a>, Range<usize>)>>
 where
     I: IntoIterator<Item = (&'a File<'a>, Fingerprint)>,
@@ -183,6 +187,7 @@ where
     hash_locations
 }
 
+/// Converts a set of locations (i.e., identical code snippets) into a set of matches between distinct projects.
 fn locations_to_matches<'a>(
     locations: &[(&'a File<'a>, Range<usize>)],
 ) -> Vec<(&'a str, &'a str, Match)> {
@@ -206,6 +211,7 @@ fn locations_to_matches<'a>(
     matches
 }
 
+/// Groups a set of locations by project.
 fn group_locations<'a>(
     locations: &[(&'a File<'a>, Range<usize>)],
 ) -> HashMap<&'a str, Vec<Location>> {
