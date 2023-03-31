@@ -238,6 +238,7 @@ fn group_locations<'a>(
 /// Sorts the project pairs, the matches, and the locations.
 fn sort_output(project_pairs: &mut Vec<ProjectPair>) {
     project_pairs.sort_unstable_by_key(|p| p.num_matches);
+    project_pairs.reverse();
 
     for pp in project_pairs {
         for m in pp.matches.iter_mut() {
