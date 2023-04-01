@@ -58,9 +58,9 @@ fn main() -> anyhow::Result<()> {
         &documents,
         args.min_matches,
     );
-    let output = Output::new(errors, project_pairs);
+    let mut output = Output::new(errors, project_pairs);
 
-    output_matches(output, &args.output_file, args.pretty)?;
+    output_matches(&mut output, &args.output_file, args.pretty, &args.root)?;
 
     Ok(())
 }
@@ -136,7 +136,18 @@ fn try_read_file(entry: &DirEntry) -> Result<Option<(PathBuf, String)>, Error> {
     }
 }
 
-fn output_matches(output: Output, output_file: &PathBuf, pretty: bool) -> anyhow::Result<()> {
+fn output_matches(
+    output: &mut Output,
+    output_file: &Path,
+    pretty: bool,
+    root: &Path,
+) -> anyhow::Result<()> {
+    // TODO: Is there a better way to handle Box<dyn std::error::Error>?
+    // (This should never happen though, since we only read files inside the projects directory.)
+    output
+        .make_paths_relative_to(root)
+        .expect("Failed to make paths relative to the projects directory.");
+
     let json = if pretty {
         serde_json::to_string_pretty(&output).unwrap()
     } else {

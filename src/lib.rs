@@ -91,8 +91,8 @@ pub fn detect_plagiarism(
     let mut project_pairs = project_pairs
         .iter()
         .map(|((p1, p2), matches)| ProjectPair {
-            project1: p1,
-            project2: p2,
+            project1: (*p1).to_owned(),
+            project2: (*p2).to_owned(),
             num_matches: matches.len(),
             matches: matches.to_owned(),
         })
@@ -248,8 +248,8 @@ mod tests {
         assert_eq!(
             matches,
             vec![ProjectPair {
-                project1: &"P1".into(),
-                project2: &"P2".into(),
+                project1: "P1".into(),
+                project2: "P2".into(),
                 num_matches: 3,
                 matches: vec![
                     Match {
