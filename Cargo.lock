@@ -424,6 +424,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
+ "walkdir",
 ]
 
 [[package]]
