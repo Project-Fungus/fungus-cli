@@ -3,7 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::Serialize;
+use relative_path::RelativePathBuf;
+use serde::{Serialize, Serializer};
 
 #[derive(Serialize)]
 pub struct Output {
@@ -45,6 +46,7 @@ struct Metadata {
 
 #[derive(Serialize)]
 pub struct Error {
+    #[serde(serialize_with = "serialize_path_option")]
     pub file: Option<PathBuf>,
     pub cause: String,
 }
@@ -73,8 +75,10 @@ impl Error {
 #[derive(Debug, Eq, PartialEq, Serialize)]
 pub struct ProjectPair {
     /// Name of the first project.
+    #[serde(serialize_with = "serialize_path")]
     pub project1: PathBuf,
     /// Name of the second project.
+    #[serde(serialize_with = "serialize_path")]
     pub project2: PathBuf,
     /// Number of matches detected between the two projects.
     ///
@@ -123,6 +127,7 @@ impl Match {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Location {
     /// File in which the code snippet is found.
+    #[serde(serialize_with = "serialize_path")]
     pub file: PathBuf,
     /// Position of the code snippet within the file (in bytes).
     pub span: Range<usize>,
@@ -142,4 +147,30 @@ fn make_path_relative_to(path: &Path, root: &Path) -> Result<PathBuf, Box<dyn st
     let relative_path = canonical_path.strip_prefix(canonical_root)?;
 
     Ok(relative_path.to_owned())
+}
+
+fn serialize_path_option<S>(value: &Option<PathBuf>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        None => serializer.serialize_none(),
+        Some(p) => serialize_path(p, serializer),
+    }
+}
+
+fn serialize_path<S>(value: &PathBuf, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let relative_path = match RelativePathBuf::from_path(value) {
+        Err(_) => {
+            return Err(serde::ser::Error::custom(
+                "failed to convert PathBuf to RelativePathBuf",
+            ))
+        }
+        Ok(x) => x,
+    };
+    let path_str = format!("{relative_path}");
+    serializer.serialize_str(&path_str)
 }
