@@ -1,13 +1,16 @@
 use anyhow::Context;
 use clap::Parser;
-use serde::Serialize;
 use std::{
     fs,
     path::{Path, PathBuf},
 };
 use walkdir::{DirEntry, WalkDir};
 
-use manual_analyzer::{detect_plagiarism, File, ProjectPair, TokenizingStrategy};
+use manual_analyzer::{
+    detect_plagiarism,
+    output::{Error, Output},
+    File, TokenizingStrategy,
+};
 
 /// A simple copy detection tool for the ARM assembly language.
 #[derive(Parser, Debug)]
@@ -35,33 +38,6 @@ struct Args {
     min_matches: usize,
 }
 
-#[derive(Serialize)]
-struct Output<'a> {
-    metadata: Metadata,
-    errors: Vec<Error>,
-    project_pairs: Vec<ProjectPair<'a>>,
-}
-
-#[derive(Serialize)]
-struct Metadata {
-    num_project_pairs: usize,
-}
-
-#[derive(Serialize)]
-struct Error {
-    file: Option<PathBuf>,
-    cause: String,
-}
-
-impl Error {
-    fn from_walkdir(error: walkdir::Error) -> Error {
-        Error {
-            file: error.path().map(|p| p.to_owned()),
-            cause: error.to_string(),
-        }
-    }
-}
-
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -82,15 +58,7 @@ fn main() -> anyhow::Result<()> {
         &documents,
         args.min_matches,
     );
-
-    let metadata = Metadata {
-        num_project_pairs: project_pairs.len(),
-    };
-    let output = Output {
-        project_pairs,
-        errors,
-        metadata,
-    };
+    let output = Output::new(errors, project_pairs);
 
     output_matches(output, &args.output_file, args.pretty)?;
 

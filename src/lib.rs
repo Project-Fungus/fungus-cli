@@ -7,11 +7,12 @@ use fingerprint::Fingerprint;
 use identity_hash::IdentityHashMap;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
-use serde::Serialize;
+use output::{Location, Match, ProjectPair};
 
-pub mod fingerprint;
+mod fingerprint;
 pub mod identity_hash;
-pub mod lexing;
+mod lexing;
+pub mod output;
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum TokenizingStrategy {
@@ -41,39 +42,6 @@ impl File {
             contents,
         }
     }
-}
-
-/// Contains information about the similarity of two projects.
-#[derive(Debug, Eq, PartialEq, Serialize)]
-pub struct ProjectPair<'a> {
-    /// Name of the first project.
-    project1: &'a PathBuf,
-    /// Name of the second project.
-    project2: &'a PathBuf,
-    /// Number of matches detected between the two projects.
-    ///
-    /// This counts distinct hashes that match between the two projects (e.g., if project 1 contains the hash twice and project 3 has the same hash three times, that is just one match).
-    num_matches: usize,
-    /// Matches between the two projects.
-    matches: Vec<Match>,
-}
-
-/// Contains information about a specific code snippet that is shared between two projects.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct Match {
-    /// List of places in which the code snippet appears in project 1.
-    project1_occurrences: Vec<Location>,
-    /// List of places in which the code snipet appears in project 2.
-    project2_occurrences: Vec<Location>,
-}
-
-/// Absolute reference to a code snippet.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct Location {
-    /// File in which the code snippet is found.
-    file: PathBuf,
-    /// Position of the code snippet within the file (in bytes).
-    span: Range<usize>,
 }
 
 /// Detects matches between files in different projects and constructs a summary of the results.
