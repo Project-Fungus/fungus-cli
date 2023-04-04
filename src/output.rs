@@ -149,6 +149,7 @@ fn make_path_relative_to(path: &Path, root: &Path) -> Result<PathBuf, Box<dyn st
     Ok(relative_path.to_owned())
 }
 
+/// Serializes an `Option<PathBuf>` using `serialize_path`.
 fn serialize_path_option<S>(value: &Option<PathBuf>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -159,6 +160,9 @@ where
     }
 }
 
+/// Serializes a `PathBuf`.
+///
+/// The `relative-path` crate is used to ensure the path separator is always '/'.
 fn serialize_path<S>(value: &PathBuf, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
