@@ -1,19 +1,23 @@
 use anyhow::Context;
 use clap::Parser;
-use serde::Serialize;
 use std::{
-    fs::{self, DirEntry},
-    path::PathBuf,
+    fs,
+    path::{Path, PathBuf},
 };
+use walkdir::{DirEntry, WalkDir};
 
-use manual_analyzer::{detect_plagiarism, File, ProjectPair, TokenizingStrategy};
+use manual_analyzer::{
+    detect_plagiarism,
+    output::{Error, Output},
+    File, TokenizingStrategy,
+};
 
 /// A simple copy detection tool for the ARM assembly language.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Directory in which to search for code.
-    projects: PathBuf,
+    root: PathBuf,
     /// Noise threshold. Matches whose length is less than this value will not be flagged.
     #[arg(short, long, default_value_t = 5)]
     noise: usize,
@@ -34,17 +38,6 @@ struct Args {
     min_matches: usize,
 }
 
-#[derive(Serialize)]
-struct Output<'a> {
-    metadata: Metadata,
-    project_pairs: Vec<ProjectPair<'a>>,
-}
-
-#[derive(Serialize)]
-struct Metadata {
-    num_project_pairs: usize,
-}
-
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -56,69 +49,103 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
     }
 
-    let projects = fs::read_dir(&args.projects)
-        .with_context(|| format!("Failed to read directory entries at {:?}", &args.projects))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let project_contents = projects
-        .iter()
-        .map(get_contents)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // TODO: fingerprint files, not projects (so that the spans are meaningful when there are multiple files per project)
-    let documents = project_contents
-        .iter()
-        .map(|(path, contents)| File::new(path.to_str().unwrap(), path.to_owned(), contents))
-        .collect::<Vec<_>>();
-    let document_references = documents.iter().collect::<Vec<_>>();
+    let (documents, errors) = read_projects(&args.root);
 
     let project_pairs = detect_plagiarism(
         args.noise,
         args.guarantee,
         args.tokenizing_strategy,
-        &document_references,
+        &documents,
         args.min_matches,
     );
+    let mut output = Output::new(errors, project_pairs);
 
-    let metadata = Metadata {
-        num_project_pairs: project_pairs.len(),
-    };
-    let output = Output {
-        project_pairs,
-        metadata,
-    };
-
-    output_matches(output, &args.output_file, args.pretty)?;
+    output_matches(&mut output, &args.output_file, args.pretty, &args.root)?;
 
     Ok(())
 }
 
-/// Returns the contents of all files in the given directory concatenated
-/// together. If the given path is not a directory, then None is returned.
-// TODO: Replace with a library like `walkdir`.
-fn get_contents(path: &DirEntry) -> anyhow::Result<(PathBuf, String)> {
-    let metadata = path
-        .metadata()
-        .with_context(|| format!("Failed to read directory entry metadata at {path:?}"))?;
+fn read_projects(root: &Path) -> (Vec<File>, Vec<Error>) {
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
 
-    if metadata.is_dir() {
-        let mut contents = String::new();
-        for child in fs::read_dir(path.path())
-            .with_context(|| format!("Failed to read directory entries at {:?}", path.path()))?
-        {
-            let child = child?;
-            let (_, child_contents) = get_contents(&child)?;
-            contents += &child_contents;
+    for entry in WalkDir::new(root).min_depth(1).max_depth(1) {
+        match entry {
+            Err(e) => {
+                errors.push(Error::from_walkdir(e));
+            }
+            Ok(x) => {
+                let (mut fs, mut es) = read_files(x);
+                files.append(&mut fs);
+                errors.append(&mut es);
+            }
         }
-        Ok((path.path(), contents))
-    } else {
-        let contents = std::fs::read_to_string(path.path())
-            .with_context(|| format!("Failed to parse \"{:?}\" as UTF-8", path.path()))?;
-        Ok((path.path(), contents))
+    }
+
+    (files, errors)
+}
+
+fn read_files(project: DirEntry) -> (Vec<File>, Vec<Error>) {
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
+
+    for result in WalkDir::new(project.path()).min_depth(1) {
+        let entry = match result {
+            Err(e) => {
+                errors.push(Error::from_walkdir(e));
+                continue;
+            }
+            Ok(x) => x,
+        };
+
+        match try_read_file(&entry) {
+            Err(e) => {
+                errors.push(e);
+            }
+            Ok(None) => {
+                continue;
+            }
+            Ok(Some((path, contents))) => {
+                let file = File::new(project.path().to_owned(), path, contents);
+                files.push(file);
+            }
+        }
+    }
+
+    (files, errors)
+}
+
+/// Tries to read a file. Returns the file's path and contents on success, returns `None` if the given `DirEntry` is actually a directory, and returns an error if the operation fails.
+fn try_read_file(entry: &DirEntry) -> Result<Option<(PathBuf, String)>, Error> {
+    let metadata = match entry.metadata() {
+        Err(e) => return Err(Error::from_walkdir(e)),
+        Ok(m) => m,
+    };
+
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+
+    let path = entry.path().to_owned();
+    match fs::read_to_string(&path) {
+        Err(e) => Err(Error {
+            file: Some(path),
+            cause: e.to_string(),
+        }),
+        Ok(contents) => Ok(Some((path, contents))),
     }
 }
 
-fn output_matches(output: Output, output_file: &PathBuf, pretty: bool) -> anyhow::Result<()> {
+fn output_matches(
+    output: &mut Output,
+    output_file: &Path,
+    pretty: bool,
+    root: &Path,
+) -> anyhow::Result<()> {
+    output
+        .make_paths_relative_to(root)
+        .with_context(|| "Failed to make paths relative to the projects directory.")?;
+
     let json = if pretty {
         serde_json::to_string_pretty(&output).unwrap()
     } else {
