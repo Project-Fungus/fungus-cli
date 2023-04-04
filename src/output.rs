@@ -25,10 +25,7 @@ impl Output {
         }
     }
 
-    pub fn make_paths_relative_to(
-        &mut self,
-        root: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
         for e in self.errors.iter_mut() {
             e.make_paths_relative_to(root)?;
         }
@@ -59,10 +56,7 @@ impl Error {
         }
     }
 
-    pub fn make_paths_relative_to(
-        &mut self,
-        root: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
         if let Some(f) = &self.file {
             let relative_path = make_path_relative_to(f, root)?;
             self.file = Some(relative_path);
@@ -89,10 +83,7 @@ pub struct ProjectPair {
 }
 
 impl ProjectPair {
-    pub fn make_paths_relative_to(
-        &mut self,
-        root: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
         self.project1 = make_path_relative_to(&self.project1, root)?;
         self.project2 = make_path_relative_to(&self.project2, root)?;
         for m in self.matches.iter_mut() {
@@ -112,7 +103,7 @@ pub struct Match {
 }
 
 impl Match {
-    fn make_paths_relative_to(&mut self, root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
         for location in self.project1_occurrences.iter_mut() {
             location.make_paths_relative_to(root)?;
         }
@@ -134,13 +125,13 @@ pub struct Location {
 }
 
 impl Location {
-    fn make_paths_relative_to(&mut self, root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
         self.file = make_path_relative_to(&self.file, root)?;
         Ok(())
     }
 }
 
-fn make_path_relative_to(path: &Path, root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn make_path_relative_to(path: &Path, root: &Path) -> anyhow::Result<PathBuf> {
     let canonical_path = path.canonicalize()?;
     let canonical_root = root.canonicalize()?;
 

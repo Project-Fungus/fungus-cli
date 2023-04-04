@@ -142,11 +142,9 @@ fn output_matches(
     pretty: bool,
     root: &Path,
 ) -> anyhow::Result<()> {
-    // TODO: Is there a better way to handle Box<dyn std::error::Error>?
-    // (This should never happen though, since we only read files inside the projects directory.)
     output
         .make_paths_relative_to(root)
-        .expect("Failed to make paths relative to the projects directory.");
+        .with_context(|| "Failed to make paths relative to the projects directory.")?;
 
     let json = if pretty {
         serde_json::to_string_pretty(&output).unwrap()
