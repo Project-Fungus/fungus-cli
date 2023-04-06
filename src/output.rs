@@ -3,30 +3,40 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::Context;
 use relative_path::RelativePathBuf;
 use serde::{Serialize, Serializer};
 
 #[derive(Serialize)]
 pub struct Output {
     metadata: Metadata,
-    pub errors: Vec<Error>,
+    pub ignored_dir_errors: Vec<Error>,
+    pub projects_dir_errors: Vec<Error>,
     pub project_pairs: Vec<ProjectPair>,
 }
 
 impl Output {
-    pub fn new(errors: Vec<Error>, project_pairs: Vec<ProjectPair>) -> Output {
+    pub fn new(
+        ignored_dir_errors: Vec<Error>,
+        projects_dir_errors: Vec<Error>,
+        project_pairs: Vec<ProjectPair>,
+    ) -> Output {
         let metadata = Metadata {
             num_project_pairs: project_pairs.len(),
         };
         Output {
             metadata,
-            errors,
+            ignored_dir_errors,
+            projects_dir_errors,
             project_pairs,
         }
     }
 
     pub fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
-        for e in self.errors.iter_mut() {
+        for e in self.ignored_dir_errors.iter_mut() {
+            e.make_paths_relative_to(root)?;
+        }
+        for e in self.projects_dir_errors.iter_mut() {
             e.make_paths_relative_to(root)?;
         }
         for pp in self.project_pairs.iter_mut() {
@@ -132,10 +142,25 @@ impl Location {
 }
 
 fn make_path_relative_to(path: &Path, root: &Path) -> anyhow::Result<PathBuf> {
-    let canonical_path = path.canonicalize()?;
-    let canonical_root = root.canonicalize()?;
+    let canonical_path = path
+        .canonicalize()
+        .with_context(|| format!("Failed to make path '{}' absolute.", path.display()))?;
+    let canonical_root = root.canonicalize().with_context(|| {
+        format!(
+            "Failed to make projects directory path '{}' absolute.",
+            &root.display()
+        )
+    })?;
 
-    let relative_path = canonical_path.strip_prefix(canonical_root)?;
+    let relative_path = canonical_path
+        .strip_prefix(&canonical_root)
+        .with_context(|| {
+            format!(
+                "Failed to strip prefix '{}' from '{}'.",
+                &canonical_root.display(),
+                &canonical_path.display()
+            )
+        })?;
 
     Ok(relative_path.to_owned())
 }

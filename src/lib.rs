@@ -52,8 +52,9 @@ pub fn detect_plagiarism(
     noise_threshold: usize,
     guarantee_threshold: usize,
     tokenizing_strategy: TokenizingStrategy,
-    documents: &[File],
     min_matches: usize,
+    documents: &[File],
+    ignored_documents: &[File],
 ) -> Vec<ProjectPair> {
     // Fingerprint individual files
     let document_fingerprints = documents.iter().map(|d| {
@@ -67,9 +68,24 @@ pub fn detect_plagiarism(
             ),
         )
     });
+    let ignored_hashes = ignored_documents
+        .iter()
+        .flat_map(|d| {
+            fingerprint(
+                d,
+                &tokenizing_strategy,
+                noise_threshold,
+                guarantee_threshold,
+            )
+            .spanned_hashes
+        })
+        .map(|(hash, _)| hash)
+        .collect::<Vec<u64>>();
 
     // Map hashes to their locations
-    let hash_locations = build_hash_database(document_fingerprints);
+    let mut hash_locations = build_hash_database(document_fingerprints);
+
+    filter_matches(&mut hash_locations, &ignored_hashes);
 
     // Turn each set of locations that share a hash into a set of "matches" between distinct projects
     let mut project_pairs: HashMap<(&PathBuf, &PathBuf), Vec<Match>> = HashMap::default();
@@ -153,6 +169,17 @@ where
     }
 
     hash_locations
+}
+
+fn filter_matches(
+    hash_database: &mut IdentityHashMap<Vec<(&File, Range<usize>)>>,
+    ignored_hashes: &[u64],
+) {
+    for h in ignored_hashes {
+        hash_database.remove(h);
+    }
+
+    // TODO: Also discard common hashes
 }
 
 /// Converts a set of locations (i.e., identical code snippets) into a set of matches between distinct projects.
@@ -243,7 +270,7 @@ mod tests {
         let file4 = File::new("P3".into(), "C:/P3/file.txt".into(), "acb".to_owned());
 
         let documents = vec![file1, file2, file3, file4];
-        let matches = detect_plagiarism(3, 3, TokenizingStrategy::Bytes, &documents, 0);
+        let matches = detect_plagiarism(3, 3, TokenizingStrategy::Bytes, 0, &documents, &[]);
 
         assert_eq!(
             matches,

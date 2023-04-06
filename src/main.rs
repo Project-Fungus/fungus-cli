@@ -18,6 +18,9 @@ use manual_analyzer::{
 struct Args {
     /// Directory in which to search for code.
     root: PathBuf,
+    /// Directory containing starter code. Any matches with this code will be ignored.
+    #[arg(short, long)]
+    ignore: Option<PathBuf>,
     /// Noise threshold. Matches whose length is less than this value will not be flagged.
     #[arg(short, long, default_value_t = 5)]
     noise: usize,
@@ -39,7 +42,43 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
+    let args = get_valid_args()?;
+
+    let (documents, projects_dir_errors) = read_projects(&args.root, &args.ignore);
+
+    let (ignored_documents, ignored_dir_errors) = match args.ignore {
+        None => (Vec::new(), Vec::new()),
+        Some(ign) => read_files(&ign),
+    };
+
+    let project_pairs = detect_plagiarism(
+        args.noise,
+        args.guarantee,
+        args.tokenizing_strategy,
+        args.min_matches,
+        &documents,
+        &ignored_documents,
+    );
+    let mut output = Output::new(ignored_dir_errors, projects_dir_errors, project_pairs);
+
+    output_matches(&mut output, &args.output_file, args.pretty, &args.root)?;
+
+    Ok(())
+}
+
+/// Reads, validates, and returns the command-line arguments.
+fn get_valid_args() -> anyhow::Result<Args> {
     let args = Args::parse();
+
+    if !args.root.exists() {
+        anyhow::bail!("Projects directory '{}' not found.", args.root.display());
+    }
+
+    if let Some(ign) = &args.ignore {
+        if !ign.exists() {
+            anyhow::bail!("Starter code directory '{}' not found.", ign.display());
+        }
+    }
 
     if args.noise == 0 {
         anyhow::bail!("Noise threshold must be greater than 0.");
@@ -49,33 +88,25 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
     }
 
-    let (documents, errors) = read_projects(&args.root);
-
-    let project_pairs = detect_plagiarism(
-        args.noise,
-        args.guarantee,
-        args.tokenizing_strategy,
-        &documents,
-        args.min_matches,
-    );
-    let mut output = Output::new(errors, project_pairs);
-
-    output_matches(&mut output, &args.output_file, args.pretty, &args.root)?;
-
-    Ok(())
+    Ok(args)
 }
 
-fn read_projects(root: &Path) -> (Vec<File>, Vec<Error>) {
+/// Reads all projects from the given directory. The `ignore` directory will be skipped.
+fn read_projects(root: &Path, ignore: &Option<PathBuf>) -> (Vec<File>, Vec<Error>) {
     let mut files = Vec::new();
     let mut errors = Vec::new();
 
     for entry in WalkDir::new(root).min_depth(1).max_depth(1) {
-        match entry {
-            Err(e) => {
+        match (entry, ignore) {
+            (Err(e), _) => {
                 errors.push(Error::from_walkdir(e));
             }
-            Ok(x) => {
-                let (mut fs, mut es) = read_files(x);
+            // TODO: Check if equality works the way I expect it to here
+            (Ok(x), Some(ign)) if x.path() == ign => {
+                continue;
+            }
+            (Ok(x), _) => {
+                let (mut fs, mut es) = read_files(x.path());
                 files.append(&mut fs);
                 errors.append(&mut es);
             }
@@ -85,11 +116,11 @@ fn read_projects(root: &Path) -> (Vec<File>, Vec<Error>) {
     (files, errors)
 }
 
-fn read_files(project: DirEntry) -> (Vec<File>, Vec<Error>) {
+fn read_files(project: &Path) -> (Vec<File>, Vec<Error>) {
     let mut files = Vec::new();
     let mut errors = Vec::new();
 
-    for result in WalkDir::new(project.path()).min_depth(1) {
+    for result in WalkDir::new(project).min_depth(1) {
         let entry = match result {
             Err(e) => {
                 errors.push(Error::from_walkdir(e));
@@ -106,7 +137,7 @@ fn read_files(project: DirEntry) -> (Vec<File>, Vec<Error>) {
                 continue;
             }
             Ok(Some((path, contents))) => {
-                let file = File::new(project.path().to_owned(), path, contents);
+                let file = File::new(project.to_owned(), path, contents);
                 files.push(file);
             }
         }
