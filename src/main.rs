@@ -39,6 +39,10 @@ struct Args {
     /// Similarity threshold. Pairs of projects with fewer than this number of matches will not be shown.
     #[arg(short, long, default_value_t = 5)]
     min_matches: usize,
+    /// Common hash threshold. If the proportion of projects containing some hash is greater than this value,
+    /// that hash will be ignored.
+    #[arg(short, long)]
+    common_hash_threshold: Option<f64>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -56,6 +60,7 @@ fn main() -> anyhow::Result<()> {
         args.guarantee,
         args.tokenizing_strategy,
         args.min_matches,
+        args.common_hash_threshold,
         &documents,
         &ignored_documents,
     );
@@ -86,6 +91,15 @@ fn get_valid_args() -> anyhow::Result<Args> {
 
     if args.guarantee < args.noise {
         anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
+    }
+
+    if let Some(c) = &args.common_hash_threshold {
+        if *c <= 0.0 {
+            anyhow::bail!("Common hash threshold must be strictly positive.");
+        }
+        if *c > 1.0 {
+            anyhow::bail!("Common hash threshold must be less than or equal to one.");
+        }
     }
 
     Ok(args)

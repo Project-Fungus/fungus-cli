@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use clap::ValueEnum;
 use fingerprint::Fingerprint;
 use identity_hash::IdentityHashMap;
+use itertools::Itertools;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
 use output::{Location, Match, ProjectPair};
@@ -53,6 +54,7 @@ pub fn detect_plagiarism(
     guarantee_threshold: usize,
     tokenizing_strategy: TokenizingStrategy,
     min_matches: usize,
+    common_hash_threshold: Option<f64>,
     documents: &[File],
     ignored_documents: &[File],
 ) -> Vec<ProjectPair> {
@@ -85,7 +87,19 @@ pub fn detect_plagiarism(
     // Map hashes to their locations
     let mut hash_locations = build_hash_database(document_fingerprints);
 
-    filter_matches(&mut hash_locations, &ignored_hashes);
+    let num_projects = documents
+        .iter()
+        .map(|f| &f.project)
+        .sorted()
+        .dedup()
+        .count();
+
+    filter_hashes(
+        &mut hash_locations,
+        &ignored_hashes,
+        num_projects,
+        common_hash_threshold,
+    );
 
     // Turn each set of locations that share a hash into a set of "matches" between distinct projects
     let mut project_pairs: HashMap<(&PathBuf, &PathBuf), Vec<Match>> = HashMap::default();
@@ -171,15 +185,34 @@ where
     hash_locations
 }
 
-fn filter_matches(
+fn filter_hashes(
     hash_database: &mut IdentityHashMap<Vec<(&File, Range<usize>)>>,
     ignored_hashes: &[u64],
+    num_projects: usize,
+    common_hash_threshold: Option<f64>,
 ) {
     for h in ignored_hashes {
         hash_database.remove(h);
     }
 
-    // TODO: Also discard common hashes
+    if let Some(c) = common_hash_threshold {
+        let mut hashes_to_discard = Vec::new();
+        for (&hash, locations) in hash_database.iter() {
+            let this_num_projects = locations
+                .iter()
+                .map(|(f, _)| &f.project)
+                .sorted()
+                .dedup()
+                .count();
+            if (this_num_projects as f64) >= (num_projects as f64) * c {
+                hashes_to_discard.push(hash);
+            }
+        }
+
+        for h in hashes_to_discard {
+            hash_database.remove(&h);
+        }
+    }
 }
 
 /// Converts a set of locations (i.e., identical code snippets) into a set of matches between distinct projects.
@@ -270,7 +303,7 @@ mod tests {
         let file4 = File::new("P3".into(), "C:/P3/file.txt".into(), "acb".to_owned());
 
         let documents = vec![file1, file2, file3, file4];
-        let matches = detect_plagiarism(3, 3, TokenizingStrategy::Bytes, 0, &documents, &[]);
+        let matches = detect_plagiarism(3, 3, TokenizingStrategy::Bytes, 0, None, &documents, &[]);
 
         assert_eq!(
             matches,
