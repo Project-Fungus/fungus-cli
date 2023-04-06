@@ -12,6 +12,8 @@ pub struct Output {
     metadata: Metadata,
     pub ignored_dir_errors: Vec<Error>,
     pub projects_dir_errors: Vec<Error>,
+    pub ignored_fingerprints_errors: Vec<Error>,
+    pub projects_fingerprints_errors: Vec<Error>,
     pub project_pairs: Vec<ProjectPair>,
 }
 
@@ -19,6 +21,8 @@ impl Output {
     pub fn new(
         ignored_dir_errors: Vec<Error>,
         projects_dir_errors: Vec<Error>,
+        ignored_fingerprints_errors: Vec<Error>,
+        projects_fingerprints_errors: Vec<Error>,
         project_pairs: Vec<ProjectPair>,
     ) -> Output {
         let metadata = Metadata {
@@ -28,6 +32,8 @@ impl Output {
             metadata,
             ignored_dir_errors,
             projects_dir_errors,
+            ignored_fingerprints_errors,
+            projects_fingerprints_errors,
             project_pairs,
         }
     }
@@ -37,6 +43,12 @@ impl Output {
             e.make_paths_relative_to(root)?;
         }
         for e in self.projects_dir_errors.iter_mut() {
+            e.make_paths_relative_to(root)?;
+        }
+        for e in self.ignored_fingerprints_errors.iter_mut() {
+            e.make_paths_relative_to(root)?;
+        }
+        for e in self.projects_fingerprints_errors.iter_mut() {
             e.make_paths_relative_to(root)?;
         }
         for pp in self.project_pairs.iter_mut() {
@@ -51,7 +63,7 @@ struct Metadata {
     num_project_pairs: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Eq, PartialEq, Serialize)]
 pub struct Error {
     #[serde(serialize_with = "serialize_path_option")]
     pub file: Option<PathBuf>,

@@ -32,8 +32,9 @@ where
     assert!(k <= t);
     assert!(k != 0);
 
-    if tokens.len() < k {
-        anyhow::bail!("Number of tokens was less than noise threshold.");
+    let num_tokens = tokens.len();
+    if num_tokens < k {
+        anyhow::bail!("File could not be fingerprinted because it contains {num_tokens} tokens, which is less than the guarantee threshold of {k}.");
     }
 
     // The window size is set to t - k + 1 such that at least one hash is picked from every

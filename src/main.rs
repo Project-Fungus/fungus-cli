@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
         Some(ign) => read_files(&ign),
     };
 
-    let project_pairs = detect_plagiarism(
+    let (project_pairs, project_fingerprint_errors, ignored_fingerprint_errors) = detect_plagiarism(
         args.noise,
         args.guarantee,
         args.tokenizing_strategy,
@@ -64,7 +64,13 @@ fn main() -> anyhow::Result<()> {
         &documents,
         &ignored_documents,
     );
-    let mut output = Output::new(ignored_dir_errors, projects_dir_errors, project_pairs);
+    let mut output = Output::new(
+        ignored_dir_errors,
+        projects_dir_errors,
+        ignored_fingerprint_errors,
+        project_fingerprint_errors,
+        project_pairs,
+    );
 
     output_matches(&mut output, &args.output_file, args.pretty, &args.root)?;
 
