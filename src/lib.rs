@@ -8,7 +8,7 @@ use identity_hash::IdentityHashMap;
 use itertools::Itertools;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
-use output::{Error, Location, Match, ProjectPair};
+use output::{Location, Match, ProjectPair, Warning, WarningType};
 
 mod fingerprint;
 pub mod identity_hash;
@@ -29,6 +29,7 @@ pub enum TokenizingStrategy {
     Relative,
 }
 
+#[derive(Clone)]
 pub struct File {
     project: PathBuf,
     path: PathBuf,
@@ -57,15 +58,15 @@ pub fn detect_plagiarism(
     common_hash_threshold: Option<f64>,
     documents: &[File],
     ignored_documents: &[File],
-) -> (Vec<ProjectPair>, Vec<Error>, Vec<Error>) {
-    let (project_fingerprints, project_errors) = fingerprint_multiple(
+) -> (Vec<ProjectPair>, Vec<Warning>) {
+    let (project_fingerprints, mut warnings) = fingerprint_multiple(
         documents,
         &tokenizing_strategy,
         noise_threshold,
         guarantee_threshold,
     );
 
-    let (ignored_fingerprints, ignored_doc_errors) = fingerprint_multiple(
+    let (ignored_fingerprints, mut ignored_doc_warnings) = fingerprint_multiple(
         ignored_documents,
         &tokenizing_strategy,
         noise_threshold,
@@ -77,6 +78,7 @@ pub fn detect_plagiarism(
         .flat_map(|(_, f)| &f.spanned_hashes)
         .map(|(hash, _)| *hash)
         .collect::<Vec<_>>();
+    warnings.append(&mut ignored_doc_warnings);
 
     // Map hashes to their locations
     let mut hash_locations = build_hash_database(project_fingerprints);
@@ -124,7 +126,7 @@ pub fn detect_plagiarism(
         .collect();
     sort_output(&mut project_pairs);
 
-    (project_pairs, project_errors, ignored_doc_errors)
+    (project_pairs, warnings)
 }
 
 fn fingerprint_multiple<'a>(
@@ -132,7 +134,7 @@ fn fingerprint_multiple<'a>(
     tokenizing_strategy: &TokenizingStrategy,
     noise_threshold: usize,
     guarantee_threshold: usize,
-) -> (Vec<(&'a File, Fingerprint)>, Vec<Error>) {
+) -> (Vec<(&'a File, Fingerprint)>, Vec<Warning>) {
     let fingerprint_results = documents.iter().map(|d| {
         (
             d,
@@ -141,13 +143,14 @@ fn fingerprint_multiple<'a>(
     });
 
     let mut fingerprints = Vec::new();
-    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
     for (document, result) in fingerprint_results {
         match result {
             Err(e) => {
-                errors.push(Error {
+                warnings.push(Warning {
                     file: Some(document.path.to_owned()),
-                    cause: e.to_string(),
+                    message: e.to_string(),
+                    warn_type: WarningType::Fingerprint,
                 });
             }
             Ok(f) => {
@@ -156,7 +159,7 @@ fn fingerprint_multiple<'a>(
         }
     }
 
-    (fingerprints, errors)
+    (fingerprints, warnings)
 }
 
 /// Produces the fingerprint for a single file using the given tokenization strategy.
@@ -330,11 +333,10 @@ mod tests {
         let file4 = File::new("P3".into(), "C:/P3/file.txt".into(), "acb".to_owned());
 
         let documents = vec![file1, file2, file3, file4];
-        let (matches, project_errors, ignored_doc_errors) =
+        let (matches, warnings) =
             detect_plagiarism(3, 3, TokenizingStrategy::Bytes, 0, None, &documents, &[]);
 
-        assert!(project_errors.is_empty());
-        assert!(ignored_doc_errors.is_empty());
+        assert!(warnings.is_empty());
         assert_eq!(
             matches,
             vec![ProjectPair {
@@ -389,41 +391,40 @@ mod tests {
 
     #[test]
     fn small_files() {
-        let files = vec![File::new(
-            "Project".into(),
-            "File".into(),
-            "Hello there!".to_owned(),
-        )];
-        let ignored_files = vec![File::new(
+        let file = File::new("Project".into(), "File".into(), "Hello there!".to_owned());
+        let ignored_file = File::new(
             "Ignored Project".into(),
             "Ignored File".into(),
             "Contents".to_owned(),
-        )];
+        );
+        let noise = 1000;
+        let guarantee = 1500;
 
-        let (project_pairs, project_errors, ignored_doc_errors) = detect_plagiarism(
-            1000,
-            1500,
+        let (project_pairs, warnings) = detect_plagiarism(
+            noise,
+            guarantee,
             TokenizingStrategy::Bytes,
             5,
             None,
-            &files,
-            &ignored_files,
+            &[file.to_owned()],
+            &[ignored_file.to_owned()],
         );
 
         assert!(project_pairs.is_empty());
         assert_eq!(
-            project_errors,
-            vec![Error {
-                file: Some("File".into()),
-                cause: "".to_owned()
-            }]
-        );
-        assert_eq!(
-            ignored_doc_errors,
-            vec![Error {
-                file: Some("Ignored File".into()),
-                cause: "".to_owned()
-            }]
+            warnings,
+            vec![
+                Warning {
+                    file: Some("File".into()),
+                    message: format!("File could not be fingerprinted because it contains {} tokens, which is less than the noise threshold of {}.", &file.contents.len(), noise),
+                    warn_type: WarningType::Fingerprint,
+                },
+                Warning {
+                    file: Some("Ignored File".into()),
+                    message: format!("File could not be fingerprinted because it contains {} tokens, which is less than the noise threshold of {}.", &ignored_file.contents.len(), noise),
+                    warn_type: WarningType::Fingerprint,
+                }
+            ]
         );
     }
 }

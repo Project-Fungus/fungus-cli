@@ -8,7 +8,7 @@ use walkdir::{DirEntry, WalkDir};
 
 use manual_analyzer::{
     detect_plagiarism,
-    output::{Error, Output},
+    output::{Output, Warning, WarningType},
     File, TokenizingStrategy,
 };
 
@@ -48,14 +48,15 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = get_valid_args()?;
 
-    let (documents, projects_dir_errors) = read_projects(&args.root, &args.ignore);
+    let (documents, mut warnings) = read_projects(&args.root, &args.ignore);
 
-    let (ignored_documents, ignored_dir_errors) = match args.ignore {
+    let (ignored_documents, mut ignored_dir_warnings) = match args.ignore {
         None => (Vec::new(), Vec::new()),
         Some(ign) => read_files(&ign),
     };
+    warnings.append(&mut ignored_dir_warnings);
 
-    let (project_pairs, project_fingerprint_errors, ignored_fingerprint_errors) = detect_plagiarism(
+    let (project_pairs, mut fingerprinting_warnings) = detect_plagiarism(
         args.noise,
         args.guarantee,
         args.tokenizing_strategy,
@@ -64,15 +65,11 @@ fn main() -> anyhow::Result<()> {
         &documents,
         &ignored_documents,
     );
-    let mut output = Output::new(
-        ignored_dir_errors,
-        projects_dir_errors,
-        ignored_fingerprint_errors,
-        project_fingerprint_errors,
-        project_pairs,
-    );
+    warnings.append(&mut fingerprinting_warnings);
 
-    output_matches(&mut output, &args.output_file, args.pretty, &args.root)?;
+    let mut output = Output::new(warnings, project_pairs);
+
+    output_results(&mut output, &args.output_file, args.pretty, &args.root)?;
 
     Ok(())
 }
@@ -112,14 +109,14 @@ fn get_valid_args() -> anyhow::Result<Args> {
 }
 
 /// Reads all projects from the given directory. The `ignore` directory will be skipped.
-fn read_projects(root: &Path, ignore: &Option<PathBuf>) -> (Vec<File>, Vec<Error>) {
+fn read_projects(root: &Path, ignore: &Option<PathBuf>) -> (Vec<File>, Vec<Warning>) {
     let mut files = Vec::new();
-    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
 
     for entry in WalkDir::new(root).min_depth(1).max_depth(1) {
         match (entry, ignore) {
             (Err(e), _) => {
-                errors.push(Error::from_walkdir(e));
+                warnings.push(e.into());
             }
             // TODO: Check if equality works the way I expect it to here
             (Ok(x), Some(ign)) if x.path() == ign => {
@@ -128,22 +125,22 @@ fn read_projects(root: &Path, ignore: &Option<PathBuf>) -> (Vec<File>, Vec<Error
             (Ok(x), _) => {
                 let (mut fs, mut es) = read_files(x.path());
                 files.append(&mut fs);
-                errors.append(&mut es);
+                warnings.append(&mut es);
             }
         }
     }
 
-    (files, errors)
+    (files, warnings)
 }
 
-fn read_files(project: &Path) -> (Vec<File>, Vec<Error>) {
+fn read_files(project: &Path) -> (Vec<File>, Vec<Warning>) {
     let mut files = Vec::new();
-    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
 
     for result in WalkDir::new(project).min_depth(1) {
         let entry = match result {
             Err(e) => {
-                errors.push(Error::from_walkdir(e));
+                warnings.push(e.into());
                 continue;
             }
             Ok(x) => x,
@@ -151,7 +148,7 @@ fn read_files(project: &Path) -> (Vec<File>, Vec<Error>) {
 
         match try_read_file(&entry) {
             Err(e) => {
-                errors.push(e);
+                warnings.push(e);
             }
             Ok(None) => {
                 continue;
@@ -163,13 +160,13 @@ fn read_files(project: &Path) -> (Vec<File>, Vec<Error>) {
         }
     }
 
-    (files, errors)
+    (files, warnings)
 }
 
-/// Tries to read a file. Returns the file's path and contents on success, returns `None` if the given `DirEntry` is actually a directory, and returns an error if the operation fails.
-fn try_read_file(entry: &DirEntry) -> Result<Option<(PathBuf, String)>, Error> {
+/// Tries to read a file. Returns the file's path and contents on success, returns `None` if the given `DirEntry` is actually a directory, and returns an warning if the operation fails.
+fn try_read_file(entry: &DirEntry) -> Result<Option<(PathBuf, String)>, Warning> {
     let metadata = match entry.metadata() {
-        Err(e) => return Err(Error::from_walkdir(e)),
+        Err(e) => return Err(e.into()),
         Ok(m) => m,
     };
 
@@ -179,15 +176,16 @@ fn try_read_file(entry: &DirEntry) -> Result<Option<(PathBuf, String)>, Error> {
 
     let path = entry.path().to_owned();
     match fs::read_to_string(&path) {
-        Err(e) => Err(Error {
+        Err(e) => Err(Warning {
             file: Some(path),
-            cause: e.to_string(),
+            message: e.to_string(),
+            warn_type: WarningType::Input,
         }),
         Ok(contents) => Ok(Some((path, contents))),
     }
 }
 
-fn output_matches(
+fn output_results(
     output: &mut Output,
     output_file: &Path,
     pretty: bool,
@@ -196,6 +194,14 @@ fn output_matches(
     output
         .make_paths_relative_to(root)
         .with_context(|| "Failed to make paths relative to the projects directory.")?;
+
+    eprintln!("{} warnings.", output.warnings.len());
+    if !output.warnings.is_empty() {
+        for w in output.warnings.iter() {
+            eprintln!("{w}");
+        }
+        eprintln!();
+    }
 
     let json = if pretty {
         serde_json::to_string_pretty(&output).unwrap()

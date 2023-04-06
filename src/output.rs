@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     ops::Range,
     path::{Path, PathBuf},
 };
@@ -10,45 +11,24 @@ use serde::{Serialize, Serializer};
 #[derive(Serialize)]
 pub struct Output {
     metadata: Metadata,
-    pub ignored_dir_errors: Vec<Error>,
-    pub projects_dir_errors: Vec<Error>,
-    pub ignored_fingerprints_errors: Vec<Error>,
-    pub projects_fingerprints_errors: Vec<Error>,
+    pub warnings: Vec<Warning>,
     pub project_pairs: Vec<ProjectPair>,
 }
 
 impl Output {
-    pub fn new(
-        ignored_dir_errors: Vec<Error>,
-        projects_dir_errors: Vec<Error>,
-        ignored_fingerprints_errors: Vec<Error>,
-        projects_fingerprints_errors: Vec<Error>,
-        project_pairs: Vec<ProjectPair>,
-    ) -> Output {
+    pub fn new(warnings: Vec<Warning>, project_pairs: Vec<ProjectPair>) -> Output {
         let metadata = Metadata {
             num_project_pairs: project_pairs.len(),
         };
         Output {
             metadata,
-            ignored_dir_errors,
-            projects_dir_errors,
-            ignored_fingerprints_errors,
-            projects_fingerprints_errors,
+            warnings,
             project_pairs,
         }
     }
 
     pub fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
-        for e in self.ignored_dir_errors.iter_mut() {
-            e.make_paths_relative_to(root)?;
-        }
-        for e in self.projects_dir_errors.iter_mut() {
-            e.make_paths_relative_to(root)?;
-        }
-        for e in self.ignored_fingerprints_errors.iter_mut() {
-            e.make_paths_relative_to(root)?;
-        }
-        for e in self.projects_fingerprints_errors.iter_mut() {
+        for e in self.warnings.iter_mut() {
             e.make_paths_relative_to(root)?;
         }
         for pp in self.project_pairs.iter_mut() {
@@ -64,27 +44,47 @@ struct Metadata {
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
-pub struct Error {
+pub struct Warning {
     #[serde(serialize_with = "serialize_path_option")]
     pub file: Option<PathBuf>,
-    pub cause: String,
+    pub message: String,
+    pub warn_type: WarningType,
 }
 
-impl Error {
-    pub fn from_walkdir(error: walkdir::Error) -> Error {
-        Error {
-            file: error.path().map(|p| p.to_owned()),
-            cause: error.to_string(),
-        }
-    }
-
-    pub fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
+impl Warning {
+    fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
         if let Some(f) = &self.file {
             let relative_path = make_path_relative_to(f, root)?;
             self.file = Some(relative_path);
         }
         Ok(())
     }
+}
+
+impl Display for Warning {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let context = match &self.file {
+            None => format!("{:?} error", self.warn_type),
+            Some(f) => format!("{:?} error in \"{}\"", self.warn_type, f.display()),
+        };
+        write!(formatter, "{context}:\n  {}", self.message)
+    }
+}
+
+impl From<walkdir::Error> for Warning {
+    fn from(error: walkdir::Error) -> Self {
+        Warning {
+            file: error.path().map(|p| p.to_owned()),
+            message: error.to_string(),
+            warn_type: WarningType::Input,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+pub enum WarningType {
+    Input,
+    Fingerprint,
 }
 
 /// Contains information about the similarity of two projects.
@@ -105,7 +105,7 @@ pub struct ProjectPair {
 }
 
 impl ProjectPair {
-    pub fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
+    fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
         self.project1 = make_path_relative_to(&self.project1, root)?;
         self.project2 = make_path_relative_to(&self.project2, root)?;
         for m in self.matches.iter_mut() {
