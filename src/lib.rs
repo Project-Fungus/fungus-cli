@@ -58,18 +58,31 @@ pub fn detect_plagiarism(
     documents: &[File],
     ignored_documents: &[File],
 ) -> Vec<ProjectPair> {
-    // Fingerprint individual files
-    let document_fingerprints = documents.iter().map(|d| {
-        (
-            d,
-            fingerprint(
+    // TODO: Should we use a logging crate or something to do this properly?
+    // TODO: Make the warning part of the JSON output?
+    let log_warning = |e, d: &File| {
+        eprintln!(
+            "WARN: Skipping fingerprinting of '{}': {e}",
+            d.path.display()
+        );
+        e
+    };
+    let document_fingerprints = documents
+        .iter()
+        .map(|d| {
+            (
                 d,
-                &tokenizing_strategy,
-                noise_threshold,
-                guarantee_threshold,
-            ),
-        )
-    });
+                fingerprint(
+                    d,
+                    &tokenizing_strategy,
+                    noise_threshold,
+                    guarantee_threshold,
+                )
+                .map_err(|e| log_warning(e, d)),
+            )
+        })
+        .filter(|(_, f)| f.is_ok())
+        .map(|(d, f)| (d, f.unwrap()));
     let ignored_hashes = ignored_documents
         .iter()
         .flat_map(|d| {
@@ -79,8 +92,9 @@ pub fn detect_plagiarism(
                 noise_threshold,
                 guarantee_threshold,
             )
-            .spanned_hashes
+            .map_err(|e| log_warning(e, d))
         })
+        .flat_map(|x| x.spanned_hashes)
         .map(|(hash, _)| hash)
         .collect::<Vec<u64>>();
 
@@ -138,7 +152,7 @@ fn fingerprint(
     tokenizing_strategy: &TokenizingStrategy,
     noise_threshold: usize,
     guarantee_threshold: usize,
-) -> Fingerprint {
+) -> anyhow::Result<Fingerprint> {
     match tokenizing_strategy {
         TokenizingStrategy::Bytes => {
             // Use bytes instead of chars since it shouldn't affect the result and is faster.
