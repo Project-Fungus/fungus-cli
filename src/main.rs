@@ -163,7 +163,7 @@ fn read_files(project: &Path) -> (Vec<File>, Vec<Warning>) {
     (files, warnings)
 }
 
-/// Tries to read a file. Returns the file's path and contents on success, returns `None` if the given `DirEntry` is actually a directory, and returns an warning if the operation fails.
+/// Tries to read a file. Returns the file's path and contents on success, returns `None` if the given `DirEntry` is actually a directory, and returns a warning if the operation fails.
 fn try_read_file(entry: &DirEntry) -> Result<Option<(PathBuf, String)>, Warning> {
     let metadata = match entry.metadata() {
         Err(e) => return Err(e.into()),
