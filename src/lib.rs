@@ -70,8 +70,7 @@ pub fn detect_plagiarism(
         ignored_documents,
         &tokenizing_strategy,
         noise_threshold,
-        // TODO: Would using noise = guarantee solve the issue of matches in the starter code?
-        noise_threshold,
+        guarantee_threshold,
     );
     let ignored_hashes = ignored_fingerprints
         .iter()
