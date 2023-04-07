@@ -4,7 +4,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use walkdir::{DirEntry, WalkDir};
+use walkdir::WalkDir;
 
 use manual_analyzer::{
     detect_plagiarism,
@@ -18,9 +18,9 @@ use manual_analyzer::{
 struct Args {
     /// Directory in which to search for code.
     root: PathBuf,
-    /// Directory containing starter code. Any matches with this code will be ignored.
+    /// Files and directories containing starter code. Any matches with this code will be ignored.
     #[arg(short, long)]
-    ignore: Option<PathBuf>,
+    ignore: Vec<PathBuf>,
     /// Noise threshold. Matches whose length is less than this value will not be flagged.
     #[arg(short, long, default_value_t = 5)]
     noise: usize,
@@ -50,10 +50,7 @@ fn main() -> anyhow::Result<()> {
 
     let (documents, mut warnings) = read_projects(&args.root, &args.ignore);
 
-    let (ignored_documents, mut ignored_dir_warnings) = match args.ignore {
-        None => (Vec::new(), Vec::new()),
-        Some(ign) => read_files(&ign),
-    };
+    let (ignored_documents, mut ignored_dir_warnings) = read_starter_code(&args.ignore);
     warnings.append(&mut ignored_dir_warnings);
 
     let (project_pairs, mut fingerprinting_warnings) = detect_plagiarism(
@@ -82,9 +79,9 @@ fn parse_args() -> anyhow::Result<Args> {
         anyhow::bail!("Projects directory '{}' not found.", args.root.display());
     }
 
-    if let Some(ign) = &args.ignore {
-        if !ign.exists() {
-            anyhow::bail!("Starter code directory '{}' not found.", ign.display());
+    for path in args.ignore.iter() {
+        if !path.exists() {
+            anyhow::bail!("Ignored file or directory '{}' not found.", path.display());
         }
     }
 
@@ -108,21 +105,24 @@ fn parse_args() -> anyhow::Result<Args> {
     Ok(args)
 }
 
-/// Reads all projects from the given directory. The `ignore` directory will be skipped.
-fn read_projects(root: &Path, ignore: &Option<PathBuf>) -> (Vec<File>, Vec<Warning>) {
+/// Reads all projects from the given directory. Any paths in `ignore` will be skipped.
+fn read_projects(root: &Path, ignore: &[PathBuf]) -> (Vec<File>, Vec<Warning>) {
     let mut files = Vec::new();
     let mut warnings = Vec::new();
 
-    for entry in WalkDir::new(root).min_depth(1).max_depth(1) {
-        match (entry, ignore) {
-            (Err(e), _) => {
+    for result in WalkDir::new(root).min_depth(1).max_depth(1) {
+        match result {
+            Err(e) => {
                 warnings.push(e.into());
             }
-            (Ok(x), Some(ign)) if is_same_path(x.path(), ign) => {
-                continue;
-            }
-            (Ok(x), _) => {
-                let (mut fs, mut es) = read_files(x.path());
+            Ok(entry) => {
+                // In case an ignored directory or file is inside the projects directory, skip it.
+                // That way we avoid lexing and fingerprinting it twice.
+                if ignore.iter().any(|ign| is_same_path(entry.path(), ign)) {
+                    continue;
+                }
+
+                let (mut fs, mut es) = read_files(entry.path(), ignore);
                 files.append(&mut fs);
                 warnings.append(&mut es);
             }
@@ -132,11 +132,26 @@ fn read_projects(root: &Path, ignore: &Option<PathBuf>) -> (Vec<File>, Vec<Warni
     (files, warnings)
 }
 
-fn read_files(project: &Path) -> (Vec<File>, Vec<Warning>) {
+/// Reads all files containing starter code.
+fn read_starter_code(ignore: &[PathBuf]) -> (Vec<File>, Vec<Warning>) {
     let mut files = Vec::new();
     let mut warnings = Vec::new();
 
-    for result in WalkDir::new(project).min_depth(1) {
+    for path in ignore {
+        let (mut f, mut w) = read_files(path, &[]);
+        files.append(&mut f);
+        warnings.append(&mut w);
+    }
+
+    (files, warnings)
+}
+
+/// Reads all the files in the given directory or file. The given directory will be used as the project name.
+fn read_files(dir: &Path, files_to_skip: &[PathBuf]) -> (Vec<File>, Vec<Warning>) {
+    let mut files = Vec::new();
+    let mut warnings = Vec::new();
+
+    for result in WalkDir::new(dir) {
         let entry = match result {
             Err(e) => {
                 warnings.push(e.into());
@@ -144,44 +159,29 @@ fn read_files(project: &Path) -> (Vec<File>, Vec<Warning>) {
             }
             Ok(x) => x,
         };
+        let path = entry.path();
 
-        match try_read_file(&entry) {
+        if path.is_dir() || files_to_skip.iter().any(|f| is_same_path(path, f)) {
+            continue;
+        }
+
+        match fs::read_to_string(path) {
             Err(e) => {
-                warnings.push(e);
+                let warning = Warning {
+                    file: Some(path.to_owned()),
+                    message: e.to_string(),
+                    warn_type: WarningType::Input,
+                };
+                warnings.push(warning);
             }
-            Ok(None) => {
-                continue;
-            }
-            Ok(Some((path, contents))) => {
-                let file = File::new(project.to_owned(), path, contents);
+            Ok(contents) => {
+                let file = File::new(dir.to_owned(), path.to_owned(), contents);
                 files.push(file);
             }
         }
     }
 
     (files, warnings)
-}
-
-/// Tries to read a file. Returns the file's path and contents on success, returns `None` if the given `DirEntry` is actually a directory, and returns a warning if the operation fails.
-fn try_read_file(entry: &DirEntry) -> Result<Option<(PathBuf, String)>, Warning> {
-    let metadata = match entry.metadata() {
-        Err(e) => return Err(e.into()),
-        Ok(m) => m,
-    };
-
-    if !metadata.is_file() {
-        return Ok(None);
-    }
-
-    let path = entry.path().to_owned();
-    match fs::read_to_string(&path) {
-        Err(e) => Err(Warning {
-            file: Some(path),
-            message: e.to_string(),
-            warn_type: WarningType::Input,
-        }),
-        Ok(contents) => Ok(Some((path, contents))),
-    }
 }
 
 /// Checks if two paths refer to the same file or directory. The two paths may be the same even if their representation
