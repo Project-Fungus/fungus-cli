@@ -78,6 +78,12 @@ fn parse_args() -> anyhow::Result<Args> {
     if !args.root.exists() {
         anyhow::bail!("Projects directory '{}' not found.", args.root.display());
     }
+    if !args.root.is_dir() {
+        anyhow::bail!(
+            "Projects directory '{}' is not a directory.",
+            args.root.display()
+        );
+    }
 
     for path in args.ignore.iter() {
         if !path.exists() {
