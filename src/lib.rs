@@ -70,7 +70,18 @@ pub fn detect_plagiarism(
         ignored_documents,
         &tokenizing_strategy,
         noise_threshold,
-        guarantee_threshold,
+        // Use the same noise and guarantee threshold so that the window size is 1.
+        //
+        // Suppose the window size was 2. Suppose the hashes from the starter code were [0, 5] and the hashes from the
+        // assignment code were [..., 0, 5, 6, ...]. In the starter code, the fingerprint would be {0}. In the
+        // assignment code, the fingerprint would be {..., 0, 5, ...}. Only the hash 0 would be discarded, not 5 (even
+        // though 5 matches starter code). If the window size is set to 1 for the starter code, any code snippet that
+        // fully matches _any_ part of the starter code is guaranteed to be ignored.
+        //
+        // Letting the window size be 1 for starter code shouldn't have a huge impact on performance, since there's
+        // normally less starter code than assignment code. Normally, starter code is a strict subset of each student's
+        // submission and there are many students.
+        noise_threshold,
     );
     let ignored_hashes = ignored_fingerprints
         .iter()
