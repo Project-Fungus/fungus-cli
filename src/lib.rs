@@ -426,4 +426,113 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn ignored_files() {
+        let noise = 3;
+        let guarantee = 3;
+        let files = vec![
+            File {
+                project: "Project 1".into(),
+                path: "File 1".into(),
+                contents: "aaabbbccc".to_owned(),
+            },
+            File {
+                project: "Project 2".into(),
+                path: "File 2".into(),
+                contents: "cccxyzaaa".to_owned(),
+            },
+        ];
+        let ignored_files = vec![File {
+            project: "Starter Code".into(),
+            path: "Starter Code".into(),
+            contents: "aaa".to_owned(),
+        }];
+        let (project_pairs, warnings) = detect_plagiarism(
+            noise,
+            guarantee,
+            TokenizingStrategy::Bytes,
+            0,
+            None,
+            &files,
+            &ignored_files,
+        );
+
+        assert!(warnings.is_empty());
+        assert_eq!(
+            project_pairs,
+            vec![ProjectPair {
+                project1: "Project 1".into(),
+                project2: "Project 2".into(),
+                num_matches: 1,
+                matches: vec![Match {
+                    project1_occurrences: vec![Location {
+                        file: "File 1".into(),
+                        span: 6..9
+                    }],
+                    project2_occurrences: vec![Location {
+                        file: "File 2".into(),
+                        span: 0..3
+                    }]
+                }]
+            }]
+        );
+    }
+
+    #[test]
+    fn common_hashes() {
+        let noise = 3;
+        let guarantee = 3;
+        let files = vec![
+            File {
+                project: "Project 1".into(),
+                path: "File 1".into(),
+                contents: "aaabbbccc".to_owned(),
+            },
+            File {
+                project: "Project 2".into(),
+                path: "File 2".into(),
+                contents: "cccxyzaaa".to_owned(),
+            },
+            File {
+                project: "Project 3".into(),
+                path: "File 3".into(),
+                contents: "aaa".to_owned(),
+            },
+            File {
+                project: "Project 4".into(),
+                path: "File 4".into(),
+                contents: "111".to_owned(),
+            },
+        ];
+        let (project_pairs, warnings) = detect_plagiarism(
+            noise,
+            guarantee,
+            TokenizingStrategy::Bytes,
+            0,
+            Some(0.75),
+            &files,
+            &[],
+        );
+
+        assert!(warnings.is_empty());
+        assert_eq!(
+            project_pairs,
+            vec![ProjectPair {
+                project1: "Project 1".into(),
+                project2: "Project 2".into(),
+                num_matches: 1,
+                matches: vec![Match {
+                    project1_occurrences: vec![Location {
+                        file: "File 1".into(),
+                        span: 6..9
+                    }],
+                    project2_occurrences: vec![Location {
+                        file: "File 2".into(),
+                        span: 0..3
+                    }]
+                }]
+            }]
+        );
+    }
 }
