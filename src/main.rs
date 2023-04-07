@@ -39,8 +39,8 @@ struct Args {
     /// Similarity threshold. Pairs of projects with fewer than this number of matches will not be shown.
     #[arg(short, long, default_value_t = 5)]
     min_matches: usize,
-    /// Common hash threshold. If the proportion of projects containing some hash is greater than this value,
-    /// that hash will be ignored.
+    /// Common code threshold. If the proportion of projects containing some code snippet is greater than this value,
+    /// that code will be ignored. The value must be a real number in the range (0, 1].
     #[arg(short, long)]
     common_hash_threshold: Option<f64>,
 }
