@@ -46,7 +46,7 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
-    let args = get_valid_args()?;
+    let args = parse_args()?;
 
     let (documents, mut warnings) = read_projects(&args.root, &args.ignore);
 
@@ -75,7 +75,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 /// Reads, validates, and returns the command-line arguments.
-fn get_valid_args() -> anyhow::Result<Args> {
+fn parse_args() -> anyhow::Result<Args> {
     let args = Args::parse();
 
     if !args.root.exists() {
