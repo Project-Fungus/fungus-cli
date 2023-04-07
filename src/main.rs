@@ -118,8 +118,7 @@ fn read_projects(root: &Path, ignore: &Option<PathBuf>) -> (Vec<File>, Vec<Warni
             (Err(e), _) => {
                 warnings.push(e.into());
             }
-            // TODO: Check if equality works the way I expect it to here
-            (Ok(x), Some(ign)) if x.path() == ign => {
+            (Ok(x), Some(ign)) if is_same_path(x.path(), ign) => {
                 continue;
             }
             (Ok(x), _) => {
@@ -182,6 +181,16 @@ fn try_read_file(entry: &DirEntry) -> Result<Option<(PathBuf, String)>, Warning>
             warn_type: WarningType::Input,
         }),
         Ok(contents) => Ok(Some((path, contents))),
+    }
+}
+
+/// Checks if two paths refer to the same file or directory. The two paths may be the same even if their representation
+/// is different. For example, `.` and `foo/..` refer to the same directory (assuming `foo` exists).
+fn is_same_path(path1: &Path, path2: &Path) -> bool {
+    match (path1.canonicalize(), path2.canonicalize()) {
+        (Ok(abs_path1), Ok(abs_path2)) => abs_path1 == abs_path2,
+        // Just ignore errors here: they can be dealt with elsewhere if necessary
+        _ => path1 == path2,
     }
 }
 
