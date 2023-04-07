@@ -42,7 +42,7 @@ struct Args {
     /// Common code threshold. If the proportion of projects containing some code snippet is greater than this value,
     /// that code will be ignored. The value must be a real number in the range (0, 1].
     #[arg(short, long)]
-    common_hash_threshold: Option<f64>,
+    common_code_threshold: Option<f64>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -61,7 +61,7 @@ fn main() -> anyhow::Result<()> {
         args.guarantee,
         args.tokenizing_strategy,
         args.min_matches,
-        args.common_hash_threshold,
+        args.common_code_threshold,
         &documents,
         &ignored_documents,
     );
@@ -96,7 +96,7 @@ fn get_valid_args() -> anyhow::Result<Args> {
         anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
     }
 
-    if let Some(c) = &args.common_hash_threshold {
+    if let Some(c) = &args.common_code_threshold {
         if *c <= 0.0 {
             anyhow::bail!("Common hash threshold must be strictly positive.");
         }
