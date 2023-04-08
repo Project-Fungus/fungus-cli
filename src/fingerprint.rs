@@ -21,12 +21,21 @@ pub struct Fingerprint {
 ///
 /// Panics if `k` is greater than `t` or if `k` is 0.
 #[inline]
-pub fn fingerprint<T>(k: usize, t: usize, tokens: &[(T, Range<usize>)]) -> Fingerprint
+pub fn fingerprint<T>(
+    k: usize,
+    t: usize,
+    tokens: &[(T, Range<usize>)],
+) -> anyhow::Result<Fingerprint>
 where
     T: Hash,
 {
     assert!(k <= t);
     assert!(k != 0);
+
+    let num_tokens = tokens.len();
+    if num_tokens < k {
+        anyhow::bail!("File could not be fingerprinted because it contains {num_tokens} tokens, which is less than the noise threshold of {k}.");
+    }
 
     // The window size is set to t - k + 1 such that at least one hash is picked from every
     // sequence of hash of length greater than t - k.
@@ -40,7 +49,8 @@ where
         .map(|w| hash_window(w))
         .collect::<Vec<_>>();
 
-    choose_fingerprint(&hashes, w)
+    let fingerprint = choose_fingerprint(&hashes, w);
+    Ok(fingerprint)
 }
 
 #[inline]

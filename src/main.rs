@@ -4,11 +4,11 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use walkdir::{DirEntry, WalkDir};
+use walkdir::WalkDir;
 
 use manual_analyzer::{
     detect_plagiarism,
-    output::{Error, Output},
+    output::{Output, Warning, WarningType},
     File, TokenizingStrategy,
 };
 
@@ -18,6 +18,9 @@ use manual_analyzer::{
 struct Args {
     /// Directory in which to search for code.
     root: PathBuf,
+    /// Files and directories containing starter code. Any matches with this code will be ignored.
+    #[arg(short, long)]
+    ignore: Vec<PathBuf>,
     /// Noise threshold. Matches whose length is less than this value will not be flagged.
     #[arg(short, long, default_value_t = 5)]
     noise: usize,
@@ -36,10 +39,57 @@ struct Args {
     /// Similarity threshold. Pairs of projects with fewer than this number of matches will not be shown.
     #[arg(short, long, default_value_t = 5)]
     min_matches: usize,
+    /// Common code threshold. If the proportion of projects containing some code snippet is greater than this value,
+    /// that code will be ignored. The value must be a real number in the range (0, 1].
+    #[arg(short, long)]
+    common_code_threshold: Option<f64>,
 }
 
 fn main() -> anyhow::Result<()> {
+    let args = parse_args()?;
+
+    let (documents, mut warnings) = read_projects(&args.root, &args.ignore);
+
+    let (ignored_documents, mut ignored_dir_warnings) = read_starter_code(&args.ignore);
+    warnings.append(&mut ignored_dir_warnings);
+
+    let (project_pairs, mut fingerprinting_warnings) = detect_plagiarism(
+        args.noise,
+        args.guarantee,
+        args.tokenizing_strategy,
+        args.min_matches,
+        args.common_code_threshold,
+        &documents,
+        &ignored_documents,
+    );
+    warnings.append(&mut fingerprinting_warnings);
+
+    let mut output = Output::new(warnings, project_pairs);
+
+    output_results(&mut output, &args.output_file, args.pretty, &args.root)?;
+
+    Ok(())
+}
+
+/// Reads, validates, and returns the command-line arguments.
+fn parse_args() -> anyhow::Result<Args> {
     let args = Args::parse();
+
+    if !args.root.exists() {
+        anyhow::bail!("Projects directory '{}' not found.", args.root.display());
+    }
+    if !args.root.is_dir() {
+        anyhow::bail!(
+            "Projects directory '{}' is not a directory.",
+            args.root.display()
+        );
+    }
+
+    for path in args.ignore.iter() {
+        if !path.exists() {
+            anyhow::bail!("Ignored file or directory '{}' not found.", path.display());
+        }
+    }
 
     if args.noise == 0 {
         anyhow::bail!("Noise threshold must be greater than 0.");
@@ -49,94 +99,108 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
     }
 
-    let (documents, errors) = read_projects(&args.root);
+    if let Some(c) = &args.common_code_threshold {
+        if *c <= 0.0 {
+            anyhow::bail!("Common hash threshold must be strictly positive.");
+        }
+        if *c > 1.0 {
+            anyhow::bail!("Common hash threshold must be less than or equal to one.");
+        }
+    }
 
-    let project_pairs = detect_plagiarism(
-        args.noise,
-        args.guarantee,
-        args.tokenizing_strategy,
-        &documents,
-        args.min_matches,
-    );
-    let mut output = Output::new(errors, project_pairs);
-
-    output_matches(&mut output, &args.output_file, args.pretty, &args.root)?;
-
-    Ok(())
+    Ok(args)
 }
 
-fn read_projects(root: &Path) -> (Vec<File>, Vec<Error>) {
+/// Reads all projects from the given directory. Any paths in `ignore` will be skipped.
+fn read_projects(root: &Path, ignore: &[PathBuf]) -> (Vec<File>, Vec<Warning>) {
     let mut files = Vec::new();
-    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
 
-    for entry in WalkDir::new(root).min_depth(1).max_depth(1) {
-        match entry {
+    for result in WalkDir::new(root).min_depth(1).max_depth(1) {
+        match result {
             Err(e) => {
-                errors.push(Error::from_walkdir(e));
+                warnings.push(e.into());
             }
-            Ok(x) => {
-                let (mut fs, mut es) = read_files(x);
+            Ok(entry) => {
+                // In case an ignored directory or file is inside the projects directory, skip it.
+                // That way we avoid lexing and fingerprinting it twice.
+                if ignore.iter().any(|ign| is_same_path(entry.path(), ign)) {
+                    continue;
+                }
+
+                let (mut fs, mut es) = read_files(entry.path(), ignore);
                 files.append(&mut fs);
-                errors.append(&mut es);
+                warnings.append(&mut es);
             }
         }
     }
 
-    (files, errors)
+    (files, warnings)
 }
 
-fn read_files(project: DirEntry) -> (Vec<File>, Vec<Error>) {
+/// Reads all files containing starter code.
+fn read_starter_code(ignore: &[PathBuf]) -> (Vec<File>, Vec<Warning>) {
     let mut files = Vec::new();
-    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
 
-    for result in WalkDir::new(project.path()).min_depth(1) {
+    for path in ignore {
+        let (mut f, mut w) = read_files(path, &[]);
+        files.append(&mut f);
+        warnings.append(&mut w);
+    }
+
+    (files, warnings)
+}
+
+/// Reads all the files in the given directory or file. The given directory will be used as the project name.
+fn read_files(dir: &Path, files_to_skip: &[PathBuf]) -> (Vec<File>, Vec<Warning>) {
+    let mut files = Vec::new();
+    let mut warnings = Vec::new();
+
+    for result in WalkDir::new(dir) {
         let entry = match result {
             Err(e) => {
-                errors.push(Error::from_walkdir(e));
+                warnings.push(e.into());
                 continue;
             }
             Ok(x) => x,
         };
+        let path = entry.path();
 
-        match try_read_file(&entry) {
+        if path.is_dir() || files_to_skip.iter().any(|f| is_same_path(path, f)) {
+            continue;
+        }
+
+        match fs::read_to_string(path) {
             Err(e) => {
-                errors.push(e);
+                let warning = Warning {
+                    file: Some(path.to_owned()),
+                    message: e.to_string(),
+                    warn_type: WarningType::Input,
+                };
+                warnings.push(warning);
             }
-            Ok(None) => {
-                continue;
-            }
-            Ok(Some((path, contents))) => {
-                let file = File::new(project.path().to_owned(), path, contents);
+            Ok(contents) => {
+                let file = File::new(dir.to_owned(), path.to_owned(), contents);
                 files.push(file);
             }
         }
     }
 
-    (files, errors)
+    (files, warnings)
 }
 
-/// Tries to read a file. Returns the file's path and contents on success, returns `None` if the given `DirEntry` is actually a directory, and returns an error if the operation fails.
-fn try_read_file(entry: &DirEntry) -> Result<Option<(PathBuf, String)>, Error> {
-    let metadata = match entry.metadata() {
-        Err(e) => return Err(Error::from_walkdir(e)),
-        Ok(m) => m,
-    };
-
-    if !metadata.is_file() {
-        return Ok(None);
-    }
-
-    let path = entry.path().to_owned();
-    match fs::read_to_string(&path) {
-        Err(e) => Err(Error {
-            file: Some(path),
-            cause: e.to_string(),
-        }),
-        Ok(contents) => Ok(Some((path, contents))),
+/// Checks if two paths refer to the same file or directory. The two paths may be the same even if their representation
+/// is different. For example, `.` and `foo/..` refer to the same directory (assuming `foo` exists).
+fn is_same_path(path1: &Path, path2: &Path) -> bool {
+    match (path1.canonicalize(), path2.canonicalize()) {
+        (Ok(abs_path1), Ok(abs_path2)) => abs_path1 == abs_path2,
+        // Just ignore errors here: they can be dealt with elsewhere if necessary
+        _ => path1 == path2,
     }
 }
 
-fn output_matches(
+fn output_results(
     output: &mut Output,
     output_file: &Path,
     pretty: bool,
@@ -145,6 +209,14 @@ fn output_matches(
     output
         .make_paths_relative_to(root)
         .with_context(|| "Failed to make paths relative to the projects directory.")?;
+
+    eprintln!("{} warnings.", output.warnings.len());
+    if !output.warnings.is_empty() {
+        for w in output.warnings.iter() {
+            eprintln!("{w}");
+        }
+        eprintln!();
+    }
 
     let json = if pretty {
         serde_json::to_string_pretty(&output).unwrap()

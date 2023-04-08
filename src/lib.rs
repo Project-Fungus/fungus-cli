@@ -5,9 +5,10 @@ use std::path::PathBuf;
 use clap::ValueEnum;
 use fingerprint::Fingerprint;
 use identity_hash::IdentityHashMap;
+use itertools::Itertools;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
-use output::{Location, Match, ProjectPair};
+use output::{Location, Match, ProjectPair, Warning, WarningType};
 
 mod fingerprint;
 pub mod identity_hash;
@@ -28,6 +29,7 @@ pub enum TokenizingStrategy {
     Relative,
 }
 
+#[derive(Clone)]
 pub struct File {
     project: PathBuf,
     path: PathBuf,
@@ -52,24 +54,58 @@ pub fn detect_plagiarism(
     noise_threshold: usize,
     guarantee_threshold: usize,
     tokenizing_strategy: TokenizingStrategy,
-    documents: &[File],
     min_matches: usize,
-) -> Vec<ProjectPair> {
-    // Fingerprint individual files
-    let document_fingerprints = documents.iter().map(|d| {
-        (
-            d,
-            fingerprint(
-                d,
-                &tokenizing_strategy,
-                noise_threshold,
-                guarantee_threshold,
-            ),
-        )
-    });
+    common_hash_threshold: Option<f64>,
+    documents: &[File],
+    ignored_documents: &[File],
+) -> (Vec<ProjectPair>, Vec<Warning>) {
+    let (project_fingerprints, mut warnings) = fingerprint_multiple(
+        documents,
+        &tokenizing_strategy,
+        noise_threshold,
+        guarantee_threshold,
+    );
+
+    let (ignored_fingerprints, mut ignored_doc_warnings) = fingerprint_multiple(
+        ignored_documents,
+        &tokenizing_strategy,
+        noise_threshold,
+        // Use the same noise and guarantee threshold so that the window size is 1.
+        //
+        // Suppose the window size was 2. Suppose the hashes from the starter code were [0, 5] and the hashes from the
+        // assignment code were [..., 0, 5, 6, ...]. In the starter code, the fingerprint would be {0}. In the
+        // assignment code, the fingerprint would be {..., 0, 5, ...}. Only the hash 0 would be discarded, not 5 (even
+        // though 5 matches starter code). If the window size is set to 1 for the starter code, any code snippet that
+        // fully matches _any_ part of the starter code is guaranteed to be ignored.
+        //
+        // Letting the window size be 1 for starter code shouldn't have a huge impact on performance, since there's
+        // normally less starter code than assignment code. Normally, starter code is a strict subset of each student's
+        // submission and there are many students.
+        noise_threshold,
+    );
+    let ignored_hashes = ignored_fingerprints
+        .iter()
+        .flat_map(|(_, f)| &f.spanned_hashes)
+        .map(|(hash, _)| *hash)
+        .collect::<Vec<_>>();
+    warnings.append(&mut ignored_doc_warnings);
 
     // Map hashes to their locations
-    let hash_locations = build_hash_database(document_fingerprints);
+    let mut hash_locations = build_hash_database(project_fingerprints);
+
+    let num_projects = documents
+        .iter()
+        .map(|f| &f.project)
+        .sorted()
+        .dedup()
+        .count();
+
+    filter_hashes(
+        &mut hash_locations,
+        &ignored_hashes,
+        num_projects,
+        common_hash_threshold,
+    );
 
     // Turn each set of locations that share a hash into a set of "matches" between distinct projects
     let mut project_pairs: HashMap<(&PathBuf, &PathBuf), Vec<Match>> = HashMap::default();
@@ -99,7 +135,41 @@ pub fn detect_plagiarism(
         .filter(|p| p.num_matches >= min_matches)
         .collect();
     sort_output(&mut project_pairs);
-    project_pairs
+
+    (project_pairs, warnings)
+}
+
+fn fingerprint_multiple<'a>(
+    documents: &'a [File],
+    tokenizing_strategy: &TokenizingStrategy,
+    noise_threshold: usize,
+    guarantee_threshold: usize,
+) -> (Vec<(&'a File, Fingerprint)>, Vec<Warning>) {
+    let fingerprint_results = documents.iter().map(|d| {
+        (
+            d,
+            fingerprint(d, tokenizing_strategy, noise_threshold, guarantee_threshold),
+        )
+    });
+
+    let mut fingerprints = Vec::new();
+    let mut warnings = Vec::new();
+    for (document, result) in fingerprint_results {
+        match result {
+            Err(e) => {
+                warnings.push(Warning {
+                    file: Some(document.path.to_owned()),
+                    message: e.to_string(),
+                    warn_type: WarningType::Fingerprint,
+                });
+            }
+            Ok(f) => {
+                fingerprints.push((document, f));
+            }
+        }
+    }
+
+    (fingerprints, warnings)
 }
 
 /// Produces the fingerprint for a single file using the given tokenization strategy.
@@ -108,7 +178,7 @@ fn fingerprint(
     tokenizing_strategy: &TokenizingStrategy,
     noise_threshold: usize,
     guarantee_threshold: usize,
-) -> Fingerprint {
+) -> anyhow::Result<Fingerprint> {
     match tokenizing_strategy {
         TokenizingStrategy::Bytes => {
             // Use bytes instead of chars since it shouldn't affect the result and is faster.
@@ -153,6 +223,36 @@ where
     }
 
     hash_locations
+}
+
+fn filter_hashes(
+    hash_database: &mut IdentityHashMap<Vec<(&File, Range<usize>)>>,
+    ignored_hashes: &[u64],
+    num_projects: usize,
+    common_hash_threshold: Option<f64>,
+) {
+    for h in ignored_hashes {
+        hash_database.remove(h);
+    }
+
+    if let Some(c) = common_hash_threshold {
+        let mut hashes_to_discard = Vec::new();
+        for (&hash, locations) in hash_database.iter() {
+            let this_num_projects = locations
+                .iter()
+                .map(|(f, _)| &f.project)
+                .sorted()
+                .dedup()
+                .count();
+            if (this_num_projects as f64) >= (num_projects as f64) * c {
+                hashes_to_discard.push(hash);
+            }
+        }
+
+        for h in hashes_to_discard {
+            hash_database.remove(&h);
+        }
+    }
 }
 
 /// Converts a set of locations (i.e., identical code snippets) into a set of matches between distinct projects.
@@ -243,8 +343,10 @@ mod tests {
         let file4 = File::new("P3".into(), "C:/P3/file.txt".into(), "acb".to_owned());
 
         let documents = vec![file1, file2, file3, file4];
-        let matches = detect_plagiarism(3, 3, TokenizingStrategy::Bytes, &documents, 0);
+        let (matches, warnings) =
+            detect_plagiarism(3, 3, TokenizingStrategy::Bytes, 0, None, &documents, &[]);
 
+        assert!(warnings.is_empty());
         assert_eq!(
             matches,
             vec![ProjectPair {
@@ -293,6 +395,154 @@ mod tests {
                         }],
                     }
                 ]
+            }]
+        );
+    }
+
+    #[test]
+    fn small_files() {
+        let file = File::new("Project".into(), "File".into(), "Hello there!".to_owned());
+        let ignored_file = File::new(
+            "Ignored Project".into(),
+            "Ignored File".into(),
+            "Contents".to_owned(),
+        );
+        let noise = 1000;
+        let guarantee = 1500;
+
+        let (project_pairs, warnings) = detect_plagiarism(
+            noise,
+            guarantee,
+            TokenizingStrategy::Bytes,
+            5,
+            None,
+            &[file.to_owned()],
+            &[ignored_file.to_owned()],
+        );
+
+        assert!(project_pairs.is_empty());
+        assert_eq!(
+            warnings,
+            vec![
+                Warning {
+                    file: Some("File".into()),
+                    message: format!("File could not be fingerprinted because it contains {} tokens, which is less than the noise threshold of {}.", &file.contents.len(), noise),
+                    warn_type: WarningType::Fingerprint,
+                },
+                Warning {
+                    file: Some("Ignored File".into()),
+                    message: format!("File could not be fingerprinted because it contains {} tokens, which is less than the noise threshold of {}.", &ignored_file.contents.len(), noise),
+                    warn_type: WarningType::Fingerprint,
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn ignored_files() {
+        let noise = 3;
+        let guarantee = 3;
+        let files = vec![
+            File {
+                project: "Project 1".into(),
+                path: "File 1".into(),
+                contents: "aaabbbccc".to_owned(),
+            },
+            File {
+                project: "Project 2".into(),
+                path: "File 2".into(),
+                contents: "cccxyzaaa".to_owned(),
+            },
+        ];
+        let ignored_files = vec![File {
+            project: "Starter Code".into(),
+            path: "Starter Code".into(),
+            contents: "aaa".to_owned(),
+        }];
+        let (project_pairs, warnings) = detect_plagiarism(
+            noise,
+            guarantee,
+            TokenizingStrategy::Bytes,
+            0,
+            None,
+            &files,
+            &ignored_files,
+        );
+
+        assert!(warnings.is_empty());
+        assert_eq!(
+            project_pairs,
+            vec![ProjectPair {
+                project1: "Project 1".into(),
+                project2: "Project 2".into(),
+                num_matches: 1,
+                matches: vec![Match {
+                    project1_occurrences: vec![Location {
+                        file: "File 1".into(),
+                        span: 6..9
+                    }],
+                    project2_occurrences: vec![Location {
+                        file: "File 2".into(),
+                        span: 0..3
+                    }]
+                }]
+            }]
+        );
+    }
+
+    #[test]
+    fn common_hashes() {
+        let noise = 3;
+        let guarantee = 3;
+        let files = vec![
+            File {
+                project: "Project 1".into(),
+                path: "File 1".into(),
+                contents: "aaabbbccc".to_owned(),
+            },
+            File {
+                project: "Project 2".into(),
+                path: "File 2".into(),
+                contents: "cccxyzaaa".to_owned(),
+            },
+            File {
+                project: "Project 3".into(),
+                path: "File 3".into(),
+                contents: "aaa".to_owned(),
+            },
+            File {
+                project: "Project 4".into(),
+                path: "File 4".into(),
+                contents: "111".to_owned(),
+            },
+        ];
+        let (project_pairs, warnings) = detect_plagiarism(
+            noise,
+            guarantee,
+            TokenizingStrategy::Bytes,
+            0,
+            Some(0.75),
+            &files,
+            &[],
+        );
+
+        assert!(warnings.is_empty());
+        assert_eq!(
+            project_pairs,
+            vec![ProjectPair {
+                project1: "Project 1".into(),
+                project2: "Project 2".into(),
+                num_matches: 1,
+                matches: vec![Match {
+                    project1_occurrences: vec![Location {
+                        file: "File 1".into(),
+                        span: 6..9
+                    }],
+                    project2_occurrences: vec![Location {
+                        file: "File 2".into(),
+                        span: 0..3
+                    }]
+                }]
             }]
         );
     }
