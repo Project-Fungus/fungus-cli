@@ -9,13 +9,15 @@ use itertools::Itertools;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
 use output::{Location, Match, ProjectPair, Warning, WarningType};
+use preprocessing::whitespace_removal::{remove_whitespace_naive, remove_whitespace_relative};
 
 mod fingerprint;
 pub mod identity_hash;
 mod lexing;
 pub mod output;
+mod preprocessing;
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
 pub enum TokenizingStrategy {
     /// Do not tokenize the input. Instead, process the input as a sequence of bytes.
     Bytes,
@@ -50,10 +52,12 @@ impl File {
 ///
 /// Matches of length less than `noise_threshold` are guaranteed to be ignored.
 /// Matches of length at least `guarantee_threshold` are guaranteed to be included.
+#[allow(clippy::too_many_arguments)]
 pub fn detect_plagiarism(
     noise_threshold: usize,
     guarantee_threshold: usize,
     tokenizing_strategy: TokenizingStrategy,
+    ignore_whitespace: bool,
     min_matches: usize,
     common_hash_threshold: Option<f64>,
     documents: &[File],
@@ -64,6 +68,7 @@ pub fn detect_plagiarism(
         &tokenizing_strategy,
         noise_threshold,
         guarantee_threshold,
+        ignore_whitespace,
     );
 
     let (ignored_fingerprints, mut ignored_doc_warnings) = fingerprint_multiple(
@@ -82,6 +87,7 @@ pub fn detect_plagiarism(
         // normally less starter code than assignment code. Normally, starter code is a strict subset of each student's
         // submission and there are many students.
         noise_threshold,
+        ignore_whitespace,
     );
     let ignored_hashes = ignored_fingerprints
         .iter()
@@ -144,11 +150,18 @@ fn fingerprint_multiple<'a>(
     tokenizing_strategy: &TokenizingStrategy,
     noise_threshold: usize,
     guarantee_threshold: usize,
+    ignore_whitespace: bool,
 ) -> (Vec<(&'a File, Fingerprint)>, Vec<Warning>) {
     let fingerprint_results = documents.iter().map(|d| {
         (
             d,
-            fingerprint(d, tokenizing_strategy, noise_threshold, guarantee_threshold),
+            fingerprint(
+                d,
+                tokenizing_strategy,
+                noise_threshold,
+                guarantee_threshold,
+                ignore_whitespace,
+            ),
         )
     });
 
@@ -178,6 +191,7 @@ fn fingerprint(
     tokenizing_strategy: &TokenizingStrategy,
     noise_threshold: usize,
     guarantee_threshold: usize,
+    ignore_whitespace: bool,
 ) -> anyhow::Result<Fingerprint> {
     match tokenizing_strategy {
         TokenizingStrategy::Bytes => {
@@ -191,11 +205,17 @@ fn fingerprint(
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &characters)
         }
         TokenizingStrategy::Naive => {
-            let tokens = lex(&document.contents);
+            let mut tokens = lex(&document.contents);
+            if ignore_whitespace {
+                tokens = remove_whitespace_naive(tokens);
+            }
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
         }
         TokenizingStrategy::Relative => {
-            let tokens = lex_relative(&document.contents);
+            let mut tokens = lex_relative(&document.contents);
+            if ignore_whitespace {
+                tokens = remove_whitespace_relative(tokens);
+            }
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
         }
     }
@@ -343,8 +363,16 @@ mod tests {
         let file4 = File::new("P3".into(), "C:/P3/file.txt".into(), "acb".to_owned());
 
         let documents = vec![file1, file2, file3, file4];
-        let (matches, warnings) =
-            detect_plagiarism(3, 3, TokenizingStrategy::Bytes, 0, None, &documents, &[]);
+        let (matches, warnings) = detect_plagiarism(
+            3,
+            3,
+            TokenizingStrategy::Bytes,
+            false,
+            0,
+            None,
+            &documents,
+            &[],
+        );
 
         assert!(warnings.is_empty());
         assert_eq!(
@@ -414,6 +442,7 @@ mod tests {
             noise,
             guarantee,
             TokenizingStrategy::Bytes,
+            false,
             5,
             None,
             &[file.to_owned()],
@@ -463,6 +492,7 @@ mod tests {
             noise,
             guarantee,
             TokenizingStrategy::Bytes,
+            false,
             0,
             None,
             &files,
@@ -520,6 +550,7 @@ mod tests {
             noise,
             guarantee,
             TokenizingStrategy::Bytes,
+            false,
             0,
             Some(0.75),
             &files,
