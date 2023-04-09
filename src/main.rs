@@ -30,6 +30,10 @@ struct Args {
     /// Tokenizing strategy to use. Can be one of "bytes", "naive", or "relative".
     #[arg(value_enum, short, long, default_value = "bytes")]
     tokenizing_strategy: TokenizingStrategy,
+    /// Whether to ignore comments, whitespace, and newlines while tokenizing. This is only supported for the
+    /// "relative" tokenizing strategy.
+    #[arg(short, long, default_value_t = false)]
+    ignore_whitespace: bool,
     /// Whether the JSON output should be pretty-printed.
     #[arg(short, long, default_value_t = false)]
     pretty: bool,
@@ -57,6 +61,7 @@ fn main() -> anyhow::Result<()> {
         args.noise,
         args.guarantee,
         args.tokenizing_strategy,
+        args.ignore_whitespace,
         args.min_matches,
         args.common_code_threshold,
         &documents,
@@ -106,6 +111,12 @@ fn parse_args() -> anyhow::Result<Args> {
         if *c > 1.0 {
             anyhow::bail!("Common hash threshold must be less than or equal to one.");
         }
+    }
+
+    if args.ignore_whitespace && args.tokenizing_strategy != TokenizingStrategy::Relative {
+        anyhow::bail!(
+            "Ignoring whitespace is only supported for the 'relative' tokenizing strategy."
+        );
     }
 
     Ok(args)
