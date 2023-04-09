@@ -15,10 +15,11 @@ pub enum Token<'source> {
     Error,
 
     /// All whitespace except for newlines
-    #[regex(r"(?imx) [\s && [^\n]]+")]
+    #[regex(r"(?imx) [\s && [^\r\n]]+")]
     Whitespace,
 
     #[token("\n")]
+    #[token("\r")]
     #[token("\r\n")]
     #[token(";")]
     Newline,
@@ -327,6 +328,20 @@ mod tests {
                 (Comma, 26..27),
                 (Whitespace, 27..28),
                 (RelativeSymbol(9), 28..30),
+            ]
+        )
+    }
+
+    #[test]
+    fn test_windows_carriage_return_handling() {
+        assert_eq!(
+            lex("\r\n\n \r\r"),
+            vec![
+                (Newline, 0..2),
+                (Newline, 2..3),
+                (Whitespace, 3..4),
+                (Newline, 4..5),
+                (Newline, 5..6),
             ]
         )
     }
