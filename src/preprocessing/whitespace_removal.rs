@@ -8,10 +8,10 @@ pub fn remove_whitespace_relative(
     tokens: Vec<(RelativeToken, Range<usize>)>,
 ) -> Vec<(RelativeToken, Range<usize>)> {
     // For each index in tokens, we store whether or not a whitespace token was removed.
-    let mut tokens_removed = Vec::new();
+    let mut removed = Vec::new();
 
-    fn get_tokens_removed_in_last_n_tokens(tokens_removed: &[bool], n: usize) -> usize {
-        tokens_removed.iter().rev().take(n).filter(|x| **x).count()
+    fn tokens_removed_in_last_n_tokens(removed: &[bool], n: usize) -> usize {
+        removed.iter().rev().take(n).filter(|x| **x).count()
     }
 
     tokens
@@ -19,25 +19,25 @@ pub fn remove_whitespace_relative(
         .filter_map(|(token, range)| match token {
             // Remove whitespace, comments, and newline tokens
             RelativeToken::Whitespace | RelativeToken::Newline | RelativeToken::Comment(_) => {
-                tokens_removed.push(true);
+                removed.push(true);
                 None
             }
             // Adjust offset of RelativeSymbol tokens
             RelativeToken::RelativeSymbol(offset) => {
-                let tokens_removed_since_last_occurrence = if offset == 0 {
+                let tokens_removed = if offset == 0 {
                     0
                 } else {
-                    get_tokens_removed_in_last_n_tokens(&tokens_removed, offset - 1)
+                    tokens_removed_in_last_n_tokens(&removed, offset - 1)
                 };
-                tokens_removed.push(false);
+                removed.push(false);
                 Some((
-                    RelativeToken::RelativeSymbol(offset - tokens_removed_since_last_occurrence),
+                    RelativeToken::RelativeSymbol(offset - tokens_removed),
                     range,
                 ))
             }
             // Keep other tokens as is
             _ => {
-                tokens_removed.push(false);
+                removed.push(false);
                 Some((token, range))
             }
         })
