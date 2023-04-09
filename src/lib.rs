@@ -9,7 +9,7 @@ use itertools::Itertools;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
 use output::{Location, Match, ProjectPair, Warning, WarningType};
-use preprocessing::whitespace_removal::remove_whitespace_relative;
+use preprocessing::whitespace_removal::{remove_whitespace_relative, remove_whitespace_naive};
 
 mod fingerprint;
 pub mod identity_hash;
@@ -205,7 +205,10 @@ fn fingerprint(
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &characters)
         }
         TokenizingStrategy::Naive => {
-            let tokens = lex(&document.contents);
+            let mut tokens = lex(&document.contents);
+            if ignore_whitespace {
+                tokens = remove_whitespace_naive(tokens);
+            }
             fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
         }
         TokenizingStrategy::Relative => {

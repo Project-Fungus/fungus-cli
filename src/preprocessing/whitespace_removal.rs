@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use crate::lexing::naive::Token as NaiveToken;
 use crate::lexing::relative::Token as RelativeToken;
 
 /// Removes whitespace, comments, and newline tokens from the given token stream, updating the offsets of RelativeSymbol
@@ -44,6 +45,21 @@ pub fn remove_whitespace_relative(
         .collect()
 }
 
+/// Removes whitespace, comments, and newline tokens from the given token stream.
+pub fn remove_whitespace_naive(
+    tokens: Vec<(NaiveToken, Range<usize>)>,
+) -> Vec<(NaiveToken, Range<usize>)> {
+    tokens
+        .into_iter()
+        .filter(|(token, _)| {
+            !matches!(
+                token,
+                NaiveToken::Whitespace | NaiveToken::Newline | NaiveToken::Comment(_)
+            )
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,6 +87,23 @@ mod tests {
             (RelativeToken::RelativeSymbol(2), 12..14),
         ];
         let actual_tokens = remove_whitespace_relative(original_tokens);
+        assert_eq!(actual_tokens, expected_tokens);
+    }
+
+    #[test]
+    fn remove_whitespace_naive_works() {
+        let original_tokens = vec![
+            (NaiveToken::Symbol("test".to_owned()), 0..4),
+            (NaiveToken::Whitespace, 4..5),
+            (NaiveToken::Newline, 5..6),
+            (NaiveToken::Comment("test"), 6..7),
+            (NaiveToken::Symbol("test".to_owned()), 7..11),
+        ];
+        let expected_tokens = vec![
+            (NaiveToken::Symbol("test".to_owned()), 0..4),
+            (NaiveToken::Symbol("test".to_owned()), 7..11),
+        ];
+        let actual_tokens = remove_whitespace_naive(original_tokens);
         assert_eq!(actual_tokens, expected_tokens);
     }
 }

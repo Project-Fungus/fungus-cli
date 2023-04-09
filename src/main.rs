@@ -30,8 +30,8 @@ struct Args {
     /// Tokenizing strategy to use. Can be one of "bytes", "naive", or "relative".
     #[arg(value_enum, short, long, default_value = "bytes")]
     tokenizing_strategy: TokenizingStrategy,
-    /// Whether to ignore comments, whitespace, and newlines while tokenizing. This is only supported for the
-    /// "relative" tokenizing strategy.
+    /// Whether to ignore comments, whitespace, and newlines while tokenizing. This is only supported by the "naive" and
+    /// "relative" tokenizing strategies.
     #[arg(short, long, default_value_t = false)]
     ignore_whitespace: bool,
     /// Whether the JSON output should be pretty-printed.
