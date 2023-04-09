@@ -52,6 +52,7 @@ impl File {
 ///
 /// Matches of length less than `noise_threshold` are guaranteed to be ignored.
 /// Matches of length at least `guarantee_threshold` are guaranteed to be included.
+#[allow(clippy::too_many_arguments)]
 pub fn detect_plagiarism(
     noise_threshold: usize,
     guarantee_threshold: usize,
