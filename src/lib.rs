@@ -9,7 +9,7 @@ use itertools::Itertools;
 use lexing::naive::lex;
 use lexing::relative::lex as lex_relative;
 use output::{Location, Match, ProjectPair, Warning, WarningType};
-use preprocessing::whitespace_removal::{remove_whitespace_relative, remove_whitespace_naive};
+use preprocessing::whitespace_removal::{remove_whitespace_naive, remove_whitespace_relative};
 
 mod fingerprint;
 pub mod identity_hash;
