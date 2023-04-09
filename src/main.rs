@@ -113,9 +113,9 @@ fn parse_args() -> anyhow::Result<Args> {
         }
     }
 
-    if args.ignore_whitespace && args.tokenizing_strategy != TokenizingStrategy::Relative {
+    if args.ignore_whitespace && args.tokenizing_strategy == TokenizingStrategy::Bytes {
         anyhow::bail!(
-            "Ignoring whitespace is only supported for the 'relative' tokenizing strategy."
+            "Ignoring whitespace is not supported for the 'bytes' tokenizing strategy."
         );
     }
 
