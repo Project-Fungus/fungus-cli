@@ -72,9 +72,9 @@ where
 
     let spans = spanned_tokens.iter().map(|(_, span)| span.clone());
 
-    let combined_range = combine_spans(spans);
+    let combined_span = combine_spans(spans);
 
-    (hash, combined_range)
+    (hash, combined_span)
 }
 
 #[inline]
@@ -92,18 +92,19 @@ fn combine_spans(mut spans: impl Iterator<Item = Range<usize>>) -> Range<usize> 
 #[inline]
 fn choose_fingerprint(spanned_hashes: &[(u64, Range<usize>)], w: usize) -> Fingerprint {
     let mut fingerprint_hashes = vec![];
-    let mut previously_picked_hash: Option<&(u64, Range<usize>)> = None;
+    let mut previously_picked_hash: Option<u64> = None;
 
     for window in spanned_hashes.windows(w) {
-        let min_hash = window.iter().min_by_key(|&(hash, _)| hash).unwrap();
+        let (min_hash, min_hash_span) = window.iter().min_by_key(|(hash, _)| hash).unwrap();
+        let min_hash = *min_hash;
 
         match previously_picked_hash {
-            Some(previously_picked_hash) if previously_picked_hash.0 == min_hash.0 => {
+            Some(previously_picked_hash) if previously_picked_hash == min_hash => {
                 // Do nothing. There's no point in storing the same hash twice in the fingerprint.
             }
             _ => {
                 previously_picked_hash = Some(min_hash);
-                fingerprint_hashes.push(min_hash.clone());
+                fingerprint_hashes.push((min_hash, min_hash_span.clone()));
             }
         }
     }
@@ -115,7 +116,7 @@ fn choose_fingerprint(spanned_hashes: &[(u64, Range<usize>)], w: usize) -> Finge
 
 #[cfg(test)]
 mod fingerprint_tests {
-    use super::choose_fingerprint;
+    use super::*;
 
     #[test]
     fn moss_example() {

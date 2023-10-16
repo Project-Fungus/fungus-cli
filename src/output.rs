@@ -10,18 +10,13 @@ use serde::{Serialize, Serializer};
 
 #[derive(Serialize)]
 pub struct Output {
-    metadata: Metadata,
     pub warnings: Vec<Warning>,
     pub project_pairs: Vec<ProjectPair>,
 }
 
 impl Output {
     pub fn new(warnings: Vec<Warning>, project_pairs: Vec<ProjectPair>) -> Output {
-        let metadata = Metadata {
-            num_project_pairs: project_pairs.len(),
-        };
         Output {
-            metadata,
             warnings,
             project_pairs,
         }
@@ -36,11 +31,6 @@ impl Output {
         }
         Ok(())
     }
-}
-
-#[derive(Serialize)]
-struct Metadata {
-    num_project_pairs: usize,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
@@ -96,10 +86,6 @@ pub struct ProjectPair {
     /// Name of the second project.
     #[serde(serialize_with = "serialize_path")]
     pub project2: PathBuf,
-    /// Number of matches detected between the two projects.
-    ///
-    /// This counts distinct hashes that match between the two projects (e.g., if project 1 contains the hash twice and project 3 has the same hash three times, that is just one match).
-    pub num_matches: usize,
     /// Matches between the two projects.
     pub matches: Vec<Match>,
 }
@@ -116,28 +102,24 @@ impl ProjectPair {
 }
 
 /// Contains information about a specific code snippet that is shared between two projects.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 pub struct Match {
-    /// List of places in which the code snippet appears in project 1.
-    pub project1_occurrences: Vec<Location>,
-    /// List of places in which the code snipet appears in project 2.
-    pub project2_occurrences: Vec<Location>,
+    /// Location in which the code snippet appears in project 1.
+    pub project_1_location: Location,
+    /// Location in which the code snippet appears in project 2.
+    pub project_2_location: Location,
 }
 
 impl Match {
     fn make_paths_relative_to(&mut self, root: &Path) -> anyhow::Result<()> {
-        for location in self.project1_occurrences.iter_mut() {
-            location.make_paths_relative_to(root)?;
-        }
-        for location in self.project2_occurrences.iter_mut() {
-            location.make_paths_relative_to(root)?;
-        }
+        self.project_1_location.make_paths_relative_to(root)?;
+        self.project_2_location.make_paths_relative_to(root)?;
         Ok(())
     }
 }
 
 /// Absolute reference to a code snippet.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 pub struct Location {
     /// File in which the code snippet is found.
     #[serde(serialize_with = "serialize_path")]
