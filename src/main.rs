@@ -36,7 +36,7 @@ struct Args {
     #[arg(short, long, default_value_t = false)]
     ignore_whitespace: bool,
     /// Whether to expand matches as much as possible before reporting them.
-    #[arg(short, long, default_value_t = true)]
+    #[arg(short, long, default_value_t = true, action = clap::ArgAction::Set)]
     expand_matches: bool,
     /// Whether the JSON output should be pretty-printed.
     #[arg(short, long, default_value_t = false)]
