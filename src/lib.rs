@@ -150,7 +150,6 @@ pub fn detect_plagiarism(
             project2: p2.to_owned(),
             matches,
         })
-        .filter(|p| p.matches.len() >= min_matches)
         .map(|p| {
             if expand_matches {
                 match_expansion::expand_matches(p, &document_hashes)
@@ -158,6 +157,7 @@ pub fn detect_plagiarism(
                 p
             }
         })
+        .filter(|p| p.matches.len() >= min_matches)
         .collect();
 
     sort_output(&mut project_pairs);
