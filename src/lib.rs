@@ -2,36 +2,19 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
 
-use clap::ValueEnum;
 use fingerprint::Fingerprint;
 use identity_hash::IdentityHashMap;
-use itertools::Itertools;
-use lexing::naive::lex;
-use lexing::relative::lex as lex_relative;
+use itertools::{iproduct, Itertools};
+use lexing::TokenizingStrategy;
 use output::{Location, Match, ProjectPair, Warning, WarningType};
-use preprocessing::whitespace_removal::{remove_whitespace_naive, remove_whitespace_relative};
 
-mod fingerprint;
+pub mod fingerprint;
 pub mod identity_hash;
-mod lexing;
+pub mod lexing;
+pub mod match_expansion;
 pub mod output;
-mod preprocessing;
 
-#[derive(Debug, Clone, ValueEnum, PartialEq, Eq)]
-pub enum TokenizingStrategy {
-    /// Do not tokenize the input. Instead, process the input as a sequence of bytes.
-    Bytes,
-    /// Tokenize the input using a best-effort, naive GNU ARMv7 assembly tokenizer.
-    Naive,
-    /// Tokenize the input using a more conservative and transformation-resistant GNU ARM assembly tokenizer.
-    ///
-    /// This tokenizer represents symbols using relative offsets from their last occurrence in the token sequence.
-    /// This requires an additional pass over the input to compute the offsets and identify key symbols
-    /// (i.e. instructions and directives).
-    Relative,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct File {
     project: PathBuf,
     path: PathBuf,
@@ -39,12 +22,24 @@ pub struct File {
 }
 
 impl File {
-    pub fn new(project_name: PathBuf, path: PathBuf, contents: String) -> File {
+    pub fn new(project: PathBuf, path: PathBuf, contents: String) -> File {
         File {
-            project: project_name,
+            project,
             path,
             contents,
         }
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct FileId {
+    pub project: PathBuf,
+    pub path: PathBuf,
+}
+
+impl FileId {
+    pub fn new(project: PathBuf, path: PathBuf) -> FileId {
+        FileId { project, path }
     }
 }
 
@@ -58,22 +53,41 @@ pub fn detect_plagiarism(
     guarantee_threshold: usize,
     tokenizing_strategy: TokenizingStrategy,
     ignore_whitespace: bool,
+    expand_matches: bool,
     min_matches: usize,
     common_hash_threshold: Option<f64>,
     documents: &[File],
     ignored_documents: &[File],
 ) -> (Vec<ProjectPair>, Vec<Warning>) {
-    let (project_fingerprints, mut warnings) = fingerprint_multiple(
-        documents,
-        &tokenizing_strategy,
-        noise_threshold,
-        guarantee_threshold,
-        ignore_whitespace,
-    );
+    let mut warnings = Vec::new();
+
+    let document_hashes = documents
+        .iter()
+        .map(|f| {
+            (
+                FileId::new(f.project.clone(), f.path.clone()),
+                lexing::tokenize_and_hash(&f.contents, tokenizing_strategy, ignore_whitespace),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let (document_fingerprints, fingerprinting_warnings) =
+        fingerprint_multiple(&document_hashes, noise_threshold, guarantee_threshold);
+
+    warnings.extend(fingerprinting_warnings);
+
+    let ignored_document_hashes = ignored_documents
+        .iter()
+        .map(|f| {
+            (
+                FileId::new(f.project.clone(), f.path.clone()),
+                lexing::tokenize_and_hash(&f.contents, tokenizing_strategy, ignore_whitespace),
+            )
+        })
+        .collect::<HashMap<_, _>>();
 
     let (ignored_fingerprints, mut ignored_doc_warnings) = fingerprint_multiple(
-        ignored_documents,
-        &tokenizing_strategy,
+        &ignored_document_hashes,
         noise_threshold,
         // Use the same noise and guarantee threshold so that the window size is 1.
         //
@@ -87,7 +101,6 @@ pub fn detect_plagiarism(
         // normally less starter code than assignment code. Normally, starter code is a strict subset of each student's
         // submission and there are many students.
         noise_threshold,
-        ignore_whitespace,
     );
     let ignored_hashes = ignored_fingerprints
         .iter()
@@ -97,7 +110,7 @@ pub fn detect_plagiarism(
     warnings.append(&mut ignored_doc_warnings);
 
     // Map hashes to their locations
-    let mut hash_locations = build_hash_database(project_fingerprints);
+    let mut hash_locations = build_hash_database(document_fingerprints);
 
     let num_projects = documents
         .iter()
@@ -131,37 +144,36 @@ pub fn detect_plagiarism(
     }
 
     let mut project_pairs = project_pairs
-        .iter()
+        .into_iter()
         .map(|((p1, p2), matches)| ProjectPair {
-            project1: (*p1).to_owned(),
-            project2: (*p2).to_owned(),
-            num_matches: matches.len(),
-            matches: matches.to_owned(),
+            project1: p1.to_owned(),
+            project2: p2.to_owned(),
+            matches,
         })
-        .filter(|p| p.num_matches >= min_matches)
+        .map(|p| {
+            if expand_matches {
+                match_expansion::expand_matches(p, &document_hashes)
+            } else {
+                p
+            }
+        })
+        .filter(|p| p.matches.len() >= min_matches)
         .collect();
+
     sort_output(&mut project_pairs);
 
     (project_pairs, warnings)
 }
 
-fn fingerprint_multiple<'a>(
-    documents: &'a [File],
-    tokenizing_strategy: &TokenizingStrategy,
+fn fingerprint_multiple(
+    document_hashes: &HashMap<FileId, Vec<(u64, Range<usize>)>>,
     noise_threshold: usize,
     guarantee_threshold: usize,
-    ignore_whitespace: bool,
-) -> (Vec<(&'a File, Fingerprint)>, Vec<Warning>) {
-    let fingerprint_results = documents.iter().map(|d| {
+) -> (Vec<(&FileId, Fingerprint)>, Vec<Warning>) {
+    let fingerprint_results = document_hashes.iter().map(|(file_id, hashes)| {
         (
-            d,
-            fingerprint(
-                d,
-                tokenizing_strategy,
-                noise_threshold,
-                guarantee_threshold,
-                ignore_whitespace,
-            ),
+            file_id,
+            fingerprint::fingerprint(noise_threshold, guarantee_threshold, hashes),
         )
     });
 
@@ -185,58 +197,22 @@ fn fingerprint_multiple<'a>(
     (fingerprints, warnings)
 }
 
-/// Produces the fingerprint for a single file using the given tokenization strategy.
-fn fingerprint(
-    document: &File,
-    tokenizing_strategy: &TokenizingStrategy,
-    noise_threshold: usize,
-    guarantee_threshold: usize,
-    ignore_whitespace: bool,
-) -> anyhow::Result<Fingerprint> {
-    match tokenizing_strategy {
-        TokenizingStrategy::Bytes => {
-            // Use bytes instead of chars since it shouldn't affect the result and is faster.
-            let characters = document.contents.as_bytes();
-            let characters = characters
-                .iter()
-                .enumerate()
-                .map(|(i, &c)| (c, i..i + 1))
-                .collect::<Vec<_>>();
-            fingerprint::fingerprint(noise_threshold, guarantee_threshold, &characters)
-        }
-        TokenizingStrategy::Naive => {
-            let mut tokens = lex(&document.contents);
-            if ignore_whitespace {
-                tokens = remove_whitespace_naive(tokens);
-            }
-            fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
-        }
-        TokenizingStrategy::Relative => {
-            let mut tokens = lex_relative(&document.contents);
-            if ignore_whitespace {
-                tokens = remove_whitespace_relative(tokens);
-            }
-            fingerprint::fingerprint(noise_threshold, guarantee_threshold, &tokens)
-        }
-    }
-}
-
 /// Constructs a "hash database" that maps a hash to all the locations in which it was found in the code.
-fn build_hash_database<'a, I>(fingerprints: I) -> IdentityHashMap<Vec<(&'a File, Range<usize>)>>
+fn build_hash_database<'a, I>(fingerprints: I) -> IdentityHashMap<Vec<(&'a FileId, Range<usize>)>>
 where
-    I: IntoIterator<Item = (&'a File, Fingerprint)>,
+    I: IntoIterator<Item = (&'a FileId, Fingerprint)>,
 {
-    let mut hash_locations: IdentityHashMap<Vec<(&File, Range<usize>)>> =
+    let mut hash_locations: IdentityHashMap<Vec<(&'a FileId, Range<usize>)>> =
         IdentityHashMap::default();
 
-    for (doc, fingerprint) in fingerprints.into_iter() {
+    for (file_id, fingerprint) in fingerprints.into_iter() {
         for (hash, span) in fingerprint.spanned_hashes {
             match hash_locations.get_mut(&hash) {
                 None => {
-                    hash_locations.insert(hash, vec![(doc, span)]);
+                    hash_locations.insert(hash, vec![(file_id, span)]);
                 }
                 Some(lst) => {
-                    lst.push((doc, span));
+                    lst.push((file_id, span));
                 }
             }
         }
@@ -246,7 +222,7 @@ where
 }
 
 fn filter_hashes(
-    hash_database: &mut IdentityHashMap<Vec<(&File, Range<usize>)>>,
+    hash_database: &mut IdentityHashMap<Vec<(&FileId, Range<usize>)>>,
     ignored_hashes: &[u64],
     num_projects: usize,
     common_hash_threshold: Option<f64>,
@@ -260,7 +236,7 @@ fn filter_hashes(
         for (&hash, locations) in hash_database.iter() {
             let this_num_projects = locations
                 .iter()
-                .map(|(f, _)| &f.project)
+                .map(|(file_id, _)| &file_id.project)
                 .sorted()
                 .dedup()
                 .count();
@@ -277,22 +253,27 @@ fn filter_hashes(
 
 /// Converts a set of locations (i.e., identical code snippets) into a set of matches between distinct projects.
 fn locations_to_matches<'a>(
-    locations: &[(&'a File, Range<usize>)],
+    locations: &[(&'a FileId, Range<usize>)],
 ) -> Vec<(&'a PathBuf, &'a PathBuf, Match)> {
     let grouped_locations = group_locations(locations);
 
     let mut matches = Vec::new();
-    for (&project1, project1_occurrences) in grouped_locations.iter() {
-        for (&project2, project2_occurrences) in grouped_locations.iter() {
-            if project1 >= project2 {
-                continue;
-            }
+    for ((&project_1, project_1_occurrences), (&project_2, project_2_occurrences)) in
+        iproduct!(grouped_locations.iter(), grouped_locations.iter())
+    {
+        // Don't include matches within the same project
+        if project_1 >= project_2 {
+            continue;
+        }
 
+        for (project_1_location, project_2_location) in
+            iproduct!(project_1_occurrences, project_2_occurrences)
+        {
             let m = Match {
-                project1_occurrences: project1_occurrences.to_owned(),
-                project2_occurrences: project2_occurrences.to_owned(),
+                project_1_location: project_1_location.to_owned(),
+                project_2_location: project_2_location.to_owned(),
             };
-            matches.push((project1, project2, m));
+            matches.push((project_1, project_2, m));
         }
     }
 
@@ -301,18 +282,18 @@ fn locations_to_matches<'a>(
 
 /// Groups a set of locations by project.
 fn group_locations<'a>(
-    locations: &[(&'a File, Range<usize>)],
+    locations: &[(&'a FileId, Range<usize>)],
 ) -> HashMap<&'a PathBuf, Vec<Location>> {
     let mut grouped_locations: HashMap<&PathBuf, Vec<Location>> = HashMap::default();
 
-    for (file, span) in locations {
+    for (file_id, span) in locations {
         let location = Location {
-            file: file.path.to_owned(),
+            file: file_id.path.to_owned(),
             span: span.to_owned(),
         };
-        match grouped_locations.get_mut(&file.project) {
+        match grouped_locations.get_mut(&file_id.project) {
             None => {
-                grouped_locations.insert(&file.project, vec![location]);
+                grouped_locations.insert(&file_id.project, vec![location]);
             }
             Some(lst) => {
                 lst.push(location);
@@ -325,24 +306,19 @@ fn group_locations<'a>(
 
 /// Sorts the project pairs, the matches, and the locations.
 fn sort_output(project_pairs: &mut Vec<ProjectPair>) {
-    project_pairs.sort_unstable_by_key(|p| p.num_matches);
+    project_pairs.sort_unstable_by_key(|p| p.matches.len());
     project_pairs.reverse();
 
     for pp in project_pairs {
-        for m in pp.matches.iter_mut() {
-            m.project1_occurrences.sort_unstable_by(|l1, l2| {
-                (&l1.file, l1.span.start).cmp(&(&l2.file, l2.span.start))
-            });
-            m.project2_occurrences.sort_unstable_by(|l1, l2| {
-                (&l1.file, l1.span.start).cmp(&(&l2.file, l2.span.start))
-            });
-        }
-
         pp.matches.sort_unstable_by(|m1, m2| {
-            let m1_first_location = m1.project1_occurrences.first().unwrap();
-            let m2_first_location = m2.project1_occurrences.first().unwrap();
-            (&m1_first_location.file, m1_first_location.span.start)
-                .cmp(&(&m2_first_location.file, m2_first_location.span.start))
+            (
+                &m1.project_1_location.file,
+                m1.project_1_location.span.start,
+            )
+                .cmp(&(
+                    &m2.project_1_location.file,
+                    m2.project_1_location.span.start,
+                ))
         });
     }
 }
@@ -350,6 +326,7 @@ fn sort_output(project_pairs: &mut Vec<ProjectPair>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn simple_sentences() {
@@ -368,6 +345,7 @@ mod tests {
             3,
             TokenizingStrategy::Bytes,
             false,
+            false,
             0,
             None,
             &documents,
@@ -380,47 +358,56 @@ mod tests {
             vec![ProjectPair {
                 project1: "P1".into(),
                 project2: "P2".into(),
-                num_matches: 3,
                 matches: vec![
                     Match {
-                        project1_occurrences: vec![
-                            Location {
-                                file: "C:/P1/file1.txt".into(),
-                                span: 0..3
-                            },
-                            Location {
-                                file: "C:/P1/file2.txt".into(),
-                                span: 0..3
-                            },
-                            Location {
-                                file: "C:/P1/file2.txt".into(),
-                                span: 9..12
-                            }
-                        ],
-                        project2_occurrences: vec![Location {
+                        project_1_location: Location {
+                            file: "C:/P1/file1.txt".into(),
+                            span: 0..3
+                        },
+                        project_2_location: Location {
                             file: "C:/P2/file.txt".into(),
                             span: 3..6
-                        }]
+                        }
                     },
                     Match {
-                        project1_occurrences: vec![Location {
+                        project_1_location: Location {
+                            file: "C:/P1/file2.txt".into(),
+                            span: 0..3
+                        },
+                        project_2_location: Location {
+                            file: "C:/P2/file.txt".into(),
+                            span: 3..6
+                        }
+                    },
+                    Match {
+                        project_1_location: Location {
                             file: "C:/P1/file2.txt".into(),
                             span: 3..6
-                        }],
-                        project2_occurrences: vec![Location {
+                        },
+                        project_2_location: Location {
                             file: "C:/P2/file.txt".into(),
                             span: 0..3,
-                        }],
+                        },
                     },
                     Match {
-                        project1_occurrences: vec![Location {
+                        project_1_location: Location {
+                            file: "C:/P1/file2.txt".into(),
+                            span: 9..12
+                        },
+                        project_2_location: Location {
+                            file: "C:/P2/file.txt".into(),
+                            span: 3..6
+                        }
+                    },
+                    Match {
+                        project_1_location: Location {
                             file: "C:/P1/file2.txt".into(),
                             span: 15..18,
-                        }],
-                        project2_occurrences: vec![Location {
+                        },
+                        project_2_location: Location {
                             file: "C:/P2/file.txt".into(),
                             span: 6..9
-                        }],
+                        },
                     }
                 ]
             }]
@@ -442,6 +429,7 @@ mod tests {
             noise,
             guarantee,
             TokenizingStrategy::Bytes,
+            false,
             false,
             5,
             None,
@@ -493,6 +481,7 @@ mod tests {
             guarantee,
             TokenizingStrategy::Bytes,
             false,
+            false,
             0,
             None,
             &files,
@@ -505,16 +494,15 @@ mod tests {
             vec![ProjectPair {
                 project1: "Project 1".into(),
                 project2: "Project 2".into(),
-                num_matches: 1,
                 matches: vec![Match {
-                    project1_occurrences: vec![Location {
+                    project_1_location: Location {
                         file: "File 1".into(),
                         span: 6..9
-                    }],
-                    project2_occurrences: vec![Location {
+                    },
+                    project_2_location: Location {
                         file: "File 2".into(),
                         span: 0..3
-                    }]
+                    }
                 }]
             }]
         );
@@ -551,6 +539,7 @@ mod tests {
             guarantee,
             TokenizingStrategy::Bytes,
             false,
+            false,
             0,
             Some(0.75),
             &files,
@@ -563,16 +552,15 @@ mod tests {
             vec![ProjectPair {
                 project1: "Project 1".into(),
                 project2: "Project 2".into(),
-                num_matches: 1,
                 matches: vec![Match {
-                    project1_occurrences: vec![Location {
+                    project_1_location: Location {
                         file: "File 1".into(),
                         span: 6..9
-                    }],
-                    project2_occurrences: vec![Location {
+                    },
+                    project_2_location: Location {
                         file: "File 2".into(),
                         span: 0..3
-                    }]
+                    }
                 }]
             }]
         );

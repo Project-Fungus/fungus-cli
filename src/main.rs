@@ -8,8 +8,9 @@ use walkdir::WalkDir;
 
 use manual_analyzer::{
     detect_plagiarism,
+    lexing::TokenizingStrategy,
     output::{Output, Warning, WarningType},
-    File, TokenizingStrategy,
+    File,
 };
 
 /// A simple copy detection tool for the ARM assembly language.
@@ -19,7 +20,7 @@ struct Args {
     /// Directory in which to search for code.
     root: PathBuf,
     /// Files and directories containing starter code. Any matches with this code will be ignored.
-    #[arg(short, long)]
+    #[arg(long)]
     ignore: Vec<PathBuf>,
     /// Noise threshold. Matches whose length is less than this value will not be flagged.
     #[arg(short, long, default_value_t = 5)]
@@ -34,6 +35,9 @@ struct Args {
     /// "relative" tokenizing strategies.
     #[arg(short, long, default_value_t = false)]
     ignore_whitespace: bool,
+    /// Whether to expand matches as much as possible before reporting them.
+    #[arg(short, long, default_value_t = true, action = clap::ArgAction::Set)]
+    expand_matches: bool,
     /// Whether the JSON output should be pretty-printed.
     #[arg(short, long, default_value_t = false)]
     pretty: bool,
@@ -62,6 +66,7 @@ fn main() -> anyhow::Result<()> {
         args.guarantee,
         args.tokenizing_strategy,
         args.ignore_whitespace,
+        args.expand_matches,
         args.min_matches,
         args.common_code_threshold,
         &documents,
