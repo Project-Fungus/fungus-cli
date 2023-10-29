@@ -73,6 +73,7 @@ impl From<walkdir::Error> for Warning {
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 pub enum WarningType {
+    Args,
     Input,
     Fingerprint,
 }

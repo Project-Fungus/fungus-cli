@@ -51,6 +51,7 @@ impl FileId {
 pub fn detect_plagiarism(
     noise_threshold: usize,
     guarantee_threshold: usize,
+    max_token_offset: usize,
     tokenizing_strategy: TokenizingStrategy,
     ignore_whitespace: bool,
     expand_matches: bool,
@@ -66,13 +67,22 @@ pub fn detect_plagiarism(
         .map(|f| {
             (
                 FileId::new(f.project.clone(), f.path.clone()),
-                lexing::tokenize_and_hash(&f.contents, tokenizing_strategy, ignore_whitespace),
+                lexing::tokenize_and_hash(
+                    &f.contents,
+                    tokenizing_strategy,
+                    ignore_whitespace,
+                    max_token_offset,
+                ),
             )
         })
         .collect::<HashMap<_, _>>();
 
-    let (document_fingerprints, fingerprinting_warnings) =
-        fingerprint_multiple(&document_hashes, noise_threshold, guarantee_threshold);
+    let (document_fingerprints, fingerprinting_warnings) = fingerprint_multiple(
+        &document_hashes,
+        noise_threshold,
+        guarantee_threshold,
+        max_token_offset,
+    );
 
     warnings.extend(fingerprinting_warnings);
 
@@ -81,7 +91,12 @@ pub fn detect_plagiarism(
         .map(|f| {
             (
                 FileId::new(f.project.clone(), f.path.clone()),
-                lexing::tokenize_and_hash(&f.contents, tokenizing_strategy, ignore_whitespace),
+                lexing::tokenize_and_hash(
+                    &f.contents,
+                    tokenizing_strategy,
+                    ignore_whitespace,
+                    max_token_offset,
+                ),
             )
         })
         .collect::<HashMap<_, _>>();
@@ -100,7 +115,8 @@ pub fn detect_plagiarism(
         // Letting the window size be 1 for starter code shouldn't have a huge impact on performance, since there's
         // normally less starter code than assignment code. Normally, starter code is a strict subset of each student's
         // submission and there are many students.
-        noise_threshold,
+        noise_threshold + max_token_offset,
+        max_token_offset,
     );
     let ignored_hashes = ignored_fingerprints
         .iter()
@@ -169,11 +185,17 @@ fn fingerprint_multiple(
     document_hashes: &HashMap<FileId, Vec<(u64, Range<usize>)>>,
     noise_threshold: usize,
     guarantee_threshold: usize,
+    max_token_offset: usize,
 ) -> (Vec<(&FileId, Fingerprint)>, Vec<Warning>) {
     let fingerprint_results = document_hashes.iter().map(|(file_id, hashes)| {
         (
             file_id,
-            fingerprint::fingerprint(noise_threshold, guarantee_threshold, hashes),
+            fingerprint::fingerprint(
+                noise_threshold,
+                guarantee_threshold,
+                max_token_offset,
+                hashes,
+            ),
         )
     });
 
@@ -343,6 +365,7 @@ mod tests {
         let (matches, warnings) = detect_plagiarism(
             3,
             3,
+            0,
             TokenizingStrategy::Bytes,
             false,
             false,
@@ -428,6 +451,7 @@ mod tests {
         let (project_pairs, warnings) = detect_plagiarism(
             noise,
             guarantee,
+            0,
             TokenizingStrategy::Bytes,
             false,
             false,
@@ -479,6 +503,7 @@ mod tests {
         let (project_pairs, warnings) = detect_plagiarism(
             noise,
             guarantee,
+            0,
             TokenizingStrategy::Bytes,
             false,
             false,
@@ -537,6 +562,7 @@ mod tests {
         let (project_pairs, warnings) = detect_plagiarism(
             noise,
             guarantee,
+            0,
             TokenizingStrategy::Bytes,
             false,
             false,
