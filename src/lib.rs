@@ -104,7 +104,7 @@ pub fn detect_plagiarism(
     let (ignored_fingerprints, mut ignored_doc_warnings) = fingerprint_multiple(
         &ignored_document_hashes,
         noise_threshold,
-        // Use the same noise and guarantee threshold so that the window size is 1.
+        // Choose the fingerprinting parameters so that the window size is 1.
         //
         // Suppose the window size was 2. Suppose the hashes from the starter code were [0, 5] and the hashes from the
         // assignment code were [..., 0, 5, 6, ...]. In the starter code, the fingerprint would be {0}. In the
