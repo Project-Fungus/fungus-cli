@@ -591,4 +591,56 @@ mod tests {
             }]
         );
     }
+
+    #[test]
+    fn limited_relative_offsets() {
+        let noise = 8;
+        let guarantee = 12;
+        let max_token_offset = 4;
+        let files = vec![
+            File {
+                project: "Project 1".into(),
+                path: "File 1".into(),
+                // The 2nd r1 has an offset of 14
+                contents: "mov r1, sp\nfoo\nbar\nsub r0, r2, r0\nadd r0, r1, r2".to_owned(),
+            },
+            File {
+                project: "Project 2".into(),
+                path: "File 2".into(),
+                // The 2nd r1 has an offset of 12 (different from File 1!)
+                contents: "baz\nwaldo\nmov r1, sp\nsub r0, r2, r0\nadd r0, r1, r2".to_owned(),
+            },
+        ];
+        let (project_pairs, warnings) = detect_plagiarism(
+            noise,
+            guarantee,
+            max_token_offset,
+            TokenizingStrategy::Relative,
+            true,
+            true,
+            0,
+            None,
+            &files,
+            &[],
+        );
+
+        assert!(warnings.is_empty());
+        assert_eq!(
+            project_pairs,
+            vec![ProjectPair {
+                project1: "Project 1".into(),
+                project2: "Project 2".into(),
+                matches: vec![Match {
+                    project_1_location: Location {
+                        file: "File 1".into(),
+                        span: 19..48
+                    },
+                    project_2_location: Location {
+                        file: "File 2".into(),
+                        span: 21..50
+                    }
+                }]
+            }]
+        )
+    }
 }
