@@ -17,19 +17,27 @@ pub struct Fingerprint {
 ///
 /// If the same hash occurs multiple times in a row, it will only be returned once.
 ///
+/// # Arguments
+///
+/// * `k` - The noise threshold
+/// * `t` - The guarantee threshold
+/// * `m` - The maximum value for the offset in relative tokens
+///
 /// # Panics
 ///
-/// Panics if `k` is greater than `t` or if `k` is 0.
+/// * Panics if `t < k + m`
+/// * Panics if `k == 0`
 #[inline]
 pub fn fingerprint<T>(
     k: usize,
     t: usize,
+    m: usize,
     tokens: &[(T, Range<usize>)],
 ) -> anyhow::Result<Fingerprint>
 where
     T: Hash,
 {
-    assert!(k <= t);
+    assert!(t >= k + m);
     assert!(k != 0);
 
     let num_tokens = tokens.len();
@@ -37,9 +45,18 @@ where
         anyhow::bail!("File could not be fingerprinted because it contains {num_tokens} tokens, which is less than the noise threshold of {k}.");
     }
 
-    // The window size is set to t - k + 1 such that at least one hash is picked from every
-    // sequence of hash of length greater than t - k.
-    let w = t - k + 1;
+    // ORIGINAL FORMULA:
+    //   The window size is set to t - k + 1 such that at least one hash is
+    //   picked from every sequence of hashes of length greater than t - k.
+    //
+    // GENERALIZATION FOR RELATIVE TOKENS:
+    //   Suppose also that two projects have matching code snippets with a
+    //   length of t tokens. Then the last t - m tokens will definitely be the
+    //   same using the relative lexing scheme (because the relative tokens'
+    //   offsets are limited to m and these code snippets are assumed to be
+    //   identical). So by choosing the window size to be (t - m) - k + 1, we
+    //   can make the same guarantee as with the original formula.
+    let w = t - m - k + 1;
 
     // Generate the hashes of all valid k-grams in the document.
     // By hashing k-grams, we guarantee that no match shorter than k will be included in the

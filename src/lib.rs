@@ -51,6 +51,7 @@ impl FileId {
 pub fn detect_plagiarism(
     noise_threshold: usize,
     guarantee_threshold: usize,
+    max_token_offset: usize,
     tokenizing_strategy: TokenizingStrategy,
     ignore_whitespace: bool,
     expand_matches: bool,
@@ -66,13 +67,22 @@ pub fn detect_plagiarism(
         .map(|f| {
             (
                 FileId::new(f.project.clone(), f.path.clone()),
-                lexing::tokenize_and_hash(&f.contents, tokenizing_strategy, ignore_whitespace),
+                lexing::tokenize_and_hash(
+                    &f.contents,
+                    tokenizing_strategy,
+                    ignore_whitespace,
+                    max_token_offset,
+                ),
             )
         })
         .collect::<HashMap<_, _>>();
 
-    let (document_fingerprints, fingerprinting_warnings) =
-        fingerprint_multiple(&document_hashes, noise_threshold, guarantee_threshold);
+    let (document_fingerprints, fingerprinting_warnings) = fingerprint_multiple(
+        &document_hashes,
+        noise_threshold,
+        guarantee_threshold,
+        max_token_offset,
+    );
 
     warnings.extend(fingerprinting_warnings);
 
@@ -81,7 +91,12 @@ pub fn detect_plagiarism(
         .map(|f| {
             (
                 FileId::new(f.project.clone(), f.path.clone()),
-                lexing::tokenize_and_hash(&f.contents, tokenizing_strategy, ignore_whitespace),
+                lexing::tokenize_and_hash(
+                    &f.contents,
+                    tokenizing_strategy,
+                    ignore_whitespace,
+                    max_token_offset,
+                ),
             )
         })
         .collect::<HashMap<_, _>>();
@@ -89,7 +104,7 @@ pub fn detect_plagiarism(
     let (ignored_fingerprints, mut ignored_doc_warnings) = fingerprint_multiple(
         &ignored_document_hashes,
         noise_threshold,
-        // Use the same noise and guarantee threshold so that the window size is 1.
+        // Choose the fingerprinting parameters so that the window size is 1.
         //
         // Suppose the window size was 2. Suppose the hashes from the starter code were [0, 5] and the hashes from the
         // assignment code were [..., 0, 5, 6, ...]. In the starter code, the fingerprint would be {0}. In the
@@ -100,7 +115,8 @@ pub fn detect_plagiarism(
         // Letting the window size be 1 for starter code shouldn't have a huge impact on performance, since there's
         // normally less starter code than assignment code. Normally, starter code is a strict subset of each student's
         // submission and there are many students.
-        noise_threshold,
+        noise_threshold + max_token_offset,
+        max_token_offset,
     );
     let ignored_hashes = ignored_fingerprints
         .iter()
@@ -169,11 +185,17 @@ fn fingerprint_multiple(
     document_hashes: &HashMap<FileId, Vec<(u64, Range<usize>)>>,
     noise_threshold: usize,
     guarantee_threshold: usize,
+    max_token_offset: usize,
 ) -> (Vec<(&FileId, Fingerprint)>, Vec<Warning>) {
     let fingerprint_results = document_hashes.iter().map(|(file_id, hashes)| {
         (
             file_id,
-            fingerprint::fingerprint(noise_threshold, guarantee_threshold, hashes),
+            fingerprint::fingerprint(
+                noise_threshold,
+                guarantee_threshold,
+                max_token_offset,
+                hashes,
+            ),
         )
     });
 
@@ -343,6 +365,7 @@ mod tests {
         let (matches, warnings) = detect_plagiarism(
             3,
             3,
+            0,
             TokenizingStrategy::Bytes,
             false,
             false,
@@ -428,6 +451,7 @@ mod tests {
         let (project_pairs, warnings) = detect_plagiarism(
             noise,
             guarantee,
+            0,
             TokenizingStrategy::Bytes,
             false,
             false,
@@ -479,6 +503,7 @@ mod tests {
         let (project_pairs, warnings) = detect_plagiarism(
             noise,
             guarantee,
+            0,
             TokenizingStrategy::Bytes,
             false,
             false,
@@ -537,6 +562,7 @@ mod tests {
         let (project_pairs, warnings) = detect_plagiarism(
             noise,
             guarantee,
+            0,
             TokenizingStrategy::Bytes,
             false,
             false,
@@ -564,5 +590,57 @@ mod tests {
                 }]
             }]
         );
+    }
+
+    #[test]
+    fn limited_relative_offsets() {
+        let noise = 8;
+        let guarantee = 12;
+        let max_token_offset = 4;
+        let files = vec![
+            File {
+                project: "Project 1".into(),
+                path: "File 1".into(),
+                // The 2nd r1 has an offset of 14
+                contents: "mov r1, sp\nfoo\nbar\nsub r0, r2, r0\nadd r0, r1, r2".to_owned(),
+            },
+            File {
+                project: "Project 2".into(),
+                path: "File 2".into(),
+                // The 2nd r1 has an offset of 12 (different from File 1!)
+                contents: "baz\nwaldo\nmov r1, sp\nsub r0, r2, r0\nadd r0, r1, r2".to_owned(),
+            },
+        ];
+        let (project_pairs, warnings) = detect_plagiarism(
+            noise,
+            guarantee,
+            max_token_offset,
+            TokenizingStrategy::Relative,
+            true,
+            true,
+            0,
+            None,
+            &files,
+            &[],
+        );
+
+        assert!(warnings.is_empty());
+        assert_eq!(
+            project_pairs,
+            vec![ProjectPair {
+                project1: "Project 1".into(),
+                project2: "Project 2".into(),
+                matches: vec![Match {
+                    project_1_location: Location {
+                        file: "File 1".into(),
+                        span: 19..48
+                    },
+                    project_2_location: Location {
+                        file: "File 2".into(),
+                        span: 21..50
+                    }
+                }]
+            }]
+        )
     }
 }

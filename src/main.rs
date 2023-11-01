@@ -28,6 +28,19 @@ struct Args {
     /// Guarantee threshold. Matches at least as long as this value are guaranteed to be flagged.
     #[arg(short, long, default_value_t = 10)]
     guarantee: usize,
+    /// Maximum offset for relative tokens. This argument is not applicable for
+    /// non-relative tokens. The default value is `noise - 1`.
+    ///
+    /// Choosing a very small max offset will probably result in many false
+    /// positives. In the extreme case of the max offset being 0, this reduces
+    /// to non-relative lexing but with no distinction between registers,
+    /// labels, etc. Conversely, choosing a very large max offset will probably
+    /// result in many false negatives. In the extreme case of there being no
+    /// limit, the algorithm depends on the overall structure of the document
+    /// and so no matter how large the match between two projects, there is no
+    /// guarantee it will be reported.
+    #[arg(long, default_value_t = 0)]
+    max_token_offset: usize,
     /// Tokenizing strategy to use. Can be one of "bytes", "naive", or "relative".
     #[arg(value_enum, short, long, default_value = "bytes")]
     tokenizing_strategy: TokenizingStrategy,
@@ -54,9 +67,10 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
-    let args = parse_args()?;
+    let (args, mut warnings) = parse_args()?;
 
-    let (documents, mut warnings) = read_projects(&args.root, &args.ignore);
+    let (documents, mut input_warnings) = read_projects(&args.root, &args.ignore);
+    warnings.append(&mut input_warnings);
 
     let (ignored_documents, mut ignored_dir_warnings) = read_starter_code(&args.ignore);
     warnings.append(&mut ignored_dir_warnings);
@@ -64,6 +78,7 @@ fn main() -> anyhow::Result<()> {
     let (project_pairs, mut fingerprinting_warnings) = detect_plagiarism(
         args.noise,
         args.guarantee,
+        args.max_token_offset,
         args.tokenizing_strategy,
         args.ignore_whitespace,
         args.expand_matches,
@@ -82,8 +97,9 @@ fn main() -> anyhow::Result<()> {
 }
 
 /// Reads, validates, and returns the command-line arguments.
-fn parse_args() -> anyhow::Result<Args> {
-    let args = Args::parse();
+fn parse_args() -> anyhow::Result<(Args, Vec<Warning>)> {
+    let mut args = Args::parse();
+    let mut warnings = Vec::new();
 
     if !args.root.exists() {
         anyhow::bail!("Projects directory '{}' not found.", args.root.display());
@@ -105,7 +121,26 @@ fn parse_args() -> anyhow::Result<Args> {
         anyhow::bail!("Noise threshold must be greater than 0.");
     }
 
-    if args.guarantee < args.noise {
+    match (args.tokenizing_strategy, args.max_token_offset) {
+        (TokenizingStrategy::Relative, 0) => {
+            // Default value
+            args.max_token_offset = args.noise - 1;
+        }
+        (TokenizingStrategy::Relative, n) if n < args.noise - 1 => {
+            warnings.push(Warning {
+                file: None,
+                message: "The selected max token offset is very small. This may lead to excessive false positives.".to_owned(),
+                warn_type: WarningType::Args,
+            });
+        }
+        (TokenizingStrategy::Relative, _) => {}
+        (TokenizingStrategy::Bytes | TokenizingStrategy::Naive, n) if n != 0 => {
+            anyhow::bail!("Max token offset must be zero for non-relative tokenizing strategies.");
+        }
+        (TokenizingStrategy::Bytes | TokenizingStrategy::Naive, _) => {}
+    }
+
+    if args.guarantee < args.noise + args.max_token_offset {
         anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
     }
 
@@ -122,7 +157,7 @@ fn parse_args() -> anyhow::Result<Args> {
         anyhow::bail!("Ignoring whitespace is not supported for the 'bytes' tokenizing strategy.");
     }
 
-    Ok(args)
+    Ok((args, warnings))
 }
 
 /// Reads all projects from the given directory. Any paths in `ignore` will be skipped.

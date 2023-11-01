@@ -27,6 +27,7 @@ pub fn tokenize_and_hash(
     string: &str,
     tokenizing_strategy: TokenizingStrategy,
     ignore_whitespace: bool,
+    max_token_offset: usize,
 ) -> Vec<(u64, Range<usize>)> {
     match tokenizing_strategy {
         TokenizingStrategy::Bytes => {
@@ -56,6 +57,14 @@ pub fn tokenize_and_hash(
             }
             tokens
                 .into_iter()
+                .map(|(t, span)| {
+                    if let relative::Token::RelativeSymbol(n) = t {
+                        if n > max_token_offset {
+                            return (relative::Token::RelativeSymbol(0), span);
+                        }
+                    }
+                    (t, span)
+                })
                 .map(|(t, span)| (hash_token(t), span))
                 .collect()
         }
