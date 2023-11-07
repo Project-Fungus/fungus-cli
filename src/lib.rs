@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -62,7 +63,7 @@ pub fn detect_plagiarism(
 ) -> (Vec<ProjectPair>, Vec<Warning>) {
     let mut warnings = Vec::new();
 
-    let document_hashes = documents
+    let mut document_hashes = documents
         .iter()
         .map(|f| {
             (
@@ -76,15 +77,6 @@ pub fn detect_plagiarism(
             )
         })
         .collect::<HashMap<_, _>>();
-
-    let (document_fingerprints, fingerprinting_warnings) = fingerprint_multiple(
-        &document_hashes,
-        noise_threshold,
-        guarantee_threshold,
-        max_token_offset,
-    );
-
-    warnings.extend(fingerprinting_warnings);
 
     let ignored_document_hashes = ignored_documents
         .iter()
@@ -101,33 +93,29 @@ pub fn detect_plagiarism(
         })
         .collect::<HashMap<_, _>>();
 
-    let (ignored_fingerprints, mut ignored_doc_warnings) = fingerprint_multiple(
+    // Remove the contents of the ignored documents from the input documents
+    let ignored_docs_warnings = remove_ignored_documents(
+        &mut document_hashes,
         &ignored_document_hashes,
         noise_threshold,
-        // Choose the fingerprinting parameters so that the window size is 1.
-        //
-        // Suppose the window size was 2. Suppose the hashes from the starter code were [0, 5] and the hashes from the
-        // assignment code were [..., 0, 5, 6, ...]. In the starter code, the fingerprint would be {0}. In the
-        // assignment code, the fingerprint would be {..., 0, 5, ...}. Only the hash 0 would be discarded, not 5 (even
-        // though 5 matches starter code). If the window size is set to 1 for the starter code, any code snippet that
-        // fully matches _any_ part of the starter code is guaranteed to be ignored.
-        //
-        // Letting the window size be 1 for starter code shouldn't have a huge impact on performance, since there's
-        // normally less starter code than assignment code. Normally, starter code is a strict subset of each student's
-        // submission and there are many students.
-        noise_threshold + max_token_offset,
         max_token_offset,
     );
-    let ignored_hashes = ignored_fingerprints
-        .iter()
-        .flat_map(|(_, f)| &f.spanned_hashes)
-        .map(|(hash, _)| *hash)
-        .collect::<Vec<_>>();
-    warnings.append(&mut ignored_doc_warnings);
+
+    warnings.extend(ignored_docs_warnings);
+
+    let (document_fingerprints, fingerprinting_warnings) = fingerprint_multiple(
+        &document_hashes,
+        noise_threshold,
+        guarantee_threshold,
+        max_token_offset,
+    );
+
+    warnings.extend(fingerprinting_warnings);
 
     // Map hashes to their locations
     let mut hash_locations = build_hash_database(document_fingerprints);
 
+    // Filter out hashes that are common to too many projects
     let num_projects = documents
         .iter()
         .map(|f| &f.project)
@@ -135,12 +123,9 @@ pub fn detect_plagiarism(
         .dedup()
         .count();
 
-    filter_hashes(
-        &mut hash_locations,
-        &ignored_hashes,
-        num_projects,
-        common_hash_threshold,
-    );
+    if let Some(common_hash_threshold) = common_hash_threshold {
+        remove_common_hashes(&mut hash_locations, num_projects, common_hash_threshold);
+    }
 
     // Turn each set of locations that share a hash into a set of "matches" between distinct projects
     let mut project_pairs: HashMap<(&PathBuf, &PathBuf), Vec<Match>> = HashMap::default();
@@ -179,6 +164,113 @@ pub fn detect_plagiarism(
     sort_output(&mut project_pairs);
 
     (project_pairs, warnings)
+}
+
+fn remove_ignored_documents(
+    document_hashes: &mut HashMap<FileId, Vec<(u64, Range<usize>)>>,
+    ignored_document_hashes: &HashMap<FileId, Vec<(u64, Range<usize>)>>,
+    noise_threshold: usize,
+    max_token_offset: usize,
+) -> Vec<Warning> {
+    // Discard the fingerprinting warnings from the input documents here since they will always be a
+    // subset of the warnings obtained in the second fingerprinting pass when detecting plagiarism.
+    let (document_fingerprints, _fingerprinting_warnings) = fingerprint_multiple(
+        document_hashes,
+        noise_threshold,
+        // Choose the fingerprinting parameters so that the window size is 1.
+        //
+        // Suppose the window size was 2. Suppose the hashes from the starter code were [0, 5] and the hashes from the
+        // assignment code were [..., 0, 5, 6, ...]. In the starter code, the fingerprint would be {0}. In the
+        // assignment code, the fingerprint would be {..., 0, 5, ...}. Only the hash 0 would be discarded, not 5 (even
+        // though 5 matches starter code). If the window size is set to 1 for the starter code, any code snippet that
+        // fully matches _any_ part of the starter code is guaranteed to be ignored.
+        //
+        // Letting the window size be 1 for starter code shouldn't have a huge impact on performance, since there's
+        // normally less starter code than assignment code. Normally, starter code is a strict subset of each student's
+        // submission and there are many students.
+        noise_threshold + max_token_offset,
+        max_token_offset,
+    );
+
+    let (ignored_document_fingerprints, ignored_docs_fingerprinting_warnings) =
+        fingerprint_multiple(
+            ignored_document_hashes,
+            noise_threshold,
+            noise_threshold + max_token_offset,
+            max_token_offset,
+        );
+
+    // Map hashes to their locations
+    let hash_locations = build_hash_database(document_fingerprints);
+
+    // Find locations of hashes that are also in the ignored documents
+    let mut matches: HashMap<FileId, Vec<Range<usize>>> = HashMap::new();
+
+    for (_, ignored_fingerprint) in ignored_document_fingerprints {
+        for (ignored_hash, _) in ignored_fingerprint.spanned_hashes {
+            if let Some(locations) = hash_locations.get(&ignored_hash) {
+                for (input_file_id, input_doc_span) in locations {
+                    if let Some(input_file_matches) = matches.get_mut(input_file_id) {
+                        input_file_matches.push(input_doc_span.clone());
+                    } else {
+                        matches.insert((*input_file_id).clone(), vec![input_doc_span.clone()]);
+                    }
+                }
+            }
+        }
+    }
+
+    // Turn the byte spans into token spans
+    for (file_id, spans) in matches.iter_mut() {
+        for span in spans {
+            let file_hashes = document_hashes.get(file_id).unwrap();
+            span.start = file_hashes
+                .iter()
+                .position(|(_, token_span)| token_span.start == span.start)
+                .unwrap();
+            span.end = file_hashes
+                .iter()
+                .position(|(_, token_span)| token_span.end == span.end)
+                .unwrap();
+        }
+    }
+
+    // Remove the matches from `document_hashes`
+    for (file_id, spans) in matches {
+        remove_spans_from_vec(document_hashes.get_mut(&file_id).unwrap(), &spans);
+    }
+
+    ignored_docs_fingerprinting_warnings
+}
+
+// Removes the elements whose indices fall into any of the given spans.
+//
+// The spans may be in any order and overlap.
+fn remove_spans_from_vec<T>(v: &mut Vec<T>, spans: &[Range<usize>]) {
+    if spans.is_empty() {
+        return;
+    }
+
+    // Sort spans
+    let mut spans = spans.to_vec();
+    spans.sort_unstable_by_key(|s| s.start);
+
+    // Merge overlapping spans
+    let mut merged_spans = vec![spans[0].clone()];
+
+    for span in &spans[1..] {
+        let last_merged_span = merged_spans.last_mut().unwrap();
+        if span.start <= last_merged_span.end {
+            last_merged_span.end = max(span.end, last_merged_span.end);
+        } else {
+            merged_spans.push(span.clone());
+        }
+    }
+
+    // Remove the spans from the vector
+    for span in merged_spans.into_iter().rev() {
+        v.drain(span.clone());
+    }
 }
 
 fn fingerprint_multiple(
@@ -243,34 +335,20 @@ where
     hash_locations
 }
 
-fn filter_hashes(
+fn remove_common_hashes(
     hash_database: &mut IdentityHashMap<Vec<(&FileId, Range<usize>)>>,
-    ignored_hashes: &[u64],
     num_projects: usize,
-    common_hash_threshold: Option<f64>,
+    common_hash_threshold: f64,
 ) {
-    for h in ignored_hashes {
-        hash_database.remove(h);
-    }
-
-    if let Some(c) = common_hash_threshold {
-        let mut hashes_to_discard = Vec::new();
-        for (&hash, locations) in hash_database.iter() {
-            let this_num_projects = locations
-                .iter()
-                .map(|(file_id, _)| &file_id.project)
-                .sorted()
-                .dedup()
-                .count();
-            if (this_num_projects as f64) >= (num_projects as f64) * c {
-                hashes_to_discard.push(hash);
-            }
-        }
-
-        for h in hashes_to_discard {
-            hash_database.remove(&h);
-        }
-    }
+    hash_database.retain(|_hash, locations| {
+        let num_projects_where_this_hash_occurs = locations
+            .iter()
+            .map(|(file_id, _)| &file_id.project)
+            .sorted()
+            .dedup()
+            .count();
+        (num_projects_where_this_hash_occurs as f64) < (num_projects as f64) * common_hash_threshold
+    });
 }
 
 /// Converts a set of locations (i.e., identical code snippets) into a set of matches between distinct projects.
@@ -466,15 +544,15 @@ mod tests {
             warnings,
             vec![
                 Warning {
+                    file: Some("Ignored File".into()),
+                    message: format!("File could not be fingerprinted because it contains {} tokens, which is less than the noise threshold of {}.", &ignored_file.contents.len(), noise),
+                    warn_type: WarningType::Fingerprint,
+                },
+                Warning {
                     file: Some("File".into()),
                     message: format!("File could not be fingerprinted because it contains {} tokens, which is less than the noise threshold of {}.", &file.contents.len(), noise),
                     warn_type: WarningType::Fingerprint,
                 },
-                Warning {
-                    file: Some("Ignored File".into()),
-                    message: format!("File could not be fingerprinted because it contains {} tokens, which is less than the noise threshold of {}.", &ignored_file.contents.len(), noise),
-                    warn_type: WarningType::Fingerprint,
-                }
             ]
         );
     }
