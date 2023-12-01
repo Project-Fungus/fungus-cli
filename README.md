@@ -1,6 +1,6 @@
 # fungus-cli
 
-FUNGUS is a tool for detecting similarities between ARMv7 assembly projects, for example, for introductory software assignments. This is the command-line tool which performs the analysis and generates a plagiarism report in JSON format.
+FUNGUS is a tool for detecting similarities between ARMv7 assembly projects, for example, for introductory software assignments. This is the command-line tool which performs the analysis and generates a plagiarism report in JSON format. It is meant to be used in conjunction with a desktop GUI, such as [fungus-gui](https://github.com/Project-Fungus/fungus-gui).
 
 FUNGUS is inspired by Stanford's [Measure of Software Similarity](https://theory.stanford.edu/~aiken/moss/) (Moss). At its core, it uses the same algorithm, winnowing, described in [this paper](https://theory.stanford.edu/~aiken/publications/papers/sigmod03.pdf).
 
