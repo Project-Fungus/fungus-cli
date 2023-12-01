@@ -148,7 +148,11 @@ fn parse_args() -> anyhow::Result<(Args, Vec<Warning>)> {
     }
 
     if args.guarantee < args.noise + args.max_token_offset {
-        anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
+        if args.max_token_offset == 0 {
+            anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold. Received arguments guarantee = {}, noise = {}", args.guarantee, args.noise);
+        } else {
+            anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold plus max token offset. Received arguments guarantee = {}, noise = {}, max token offset = {}", args.guarantee, args.noise, args.max_token_offset);
+        }
     }
 
     if args.common_code_threshold < 0.0 {
