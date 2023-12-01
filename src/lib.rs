@@ -57,7 +57,7 @@ pub fn detect_plagiarism(
     ignore_whitespace: bool,
     expand_matches: bool,
     min_matches: usize,
-    common_hash_threshold: Option<f64>,
+    common_hash_threshold: f64,
     documents: &[File],
     ignored_documents: &[File],
 ) -> (Vec<ProjectPair>, Vec<Warning>) {
@@ -123,7 +123,7 @@ pub fn detect_plagiarism(
         .dedup()
         .count();
 
-    if let Some(common_hash_threshold) = common_hash_threshold {
+    if common_hash_threshold > 0.0 {
         remove_common_hashes(&mut hash_locations, num_projects, common_hash_threshold);
     }
 
@@ -448,7 +448,7 @@ mod tests {
             false,
             false,
             0,
-            None,
+            0.0,
             &documents,
             &[],
         );
@@ -534,7 +534,7 @@ mod tests {
             false,
             false,
             5,
-            None,
+            0.0,
             &[file.to_owned()],
             &[ignored_file.to_owned()],
         );
@@ -586,7 +586,7 @@ mod tests {
             false,
             false,
             0,
-            None,
+            0.0,
             &files,
             &ignored_files,
         );
@@ -645,7 +645,7 @@ mod tests {
             false,
             false,
             0,
-            Some(0.75),
+            0.75,
             &files,
             &[],
         );
@@ -697,7 +697,7 @@ mod tests {
             true,
             true,
             0,
-            None,
+            0.0,
             &files,
             &[],
         );

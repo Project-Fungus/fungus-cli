@@ -13,20 +13,20 @@ use manual_analyzer::{
     File,
 };
 
-/// A simple copy detection tool for the ARM assembly language.
+/// A simple copy detection tool for the ARMv7 assembly language.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Directory in which to search for code.
     root: PathBuf,
-    /// Files and directories containing starter code. Any matches with this code will be ignored.
-    #[arg(long)]
-    ignore: Vec<PathBuf>,
+    /// Output file.
+    #[arg(short, long, default_value = "./fungus-output.json")]
+    output_file: PathBuf,
     /// Noise threshold. Matches whose length is less than this value will not be flagged.
-    #[arg(short, long, default_value_t = 5)]
+    #[arg(short, long, default_value_t = 40)]
     noise: usize,
     /// Guarantee threshold. Matches at least as long as this value are guaranteed to be flagged.
-    #[arg(short, long, default_value_t = 10)]
+    #[arg(short, long, default_value_t = 80)]
     guarantee: usize,
     /// Maximum offset for relative tokens. This argument is not applicable for
     /// non-relative tokens. The default value is `noise - 1`.
@@ -41,12 +41,15 @@ struct Args {
     /// guarantee it will be reported.
     #[arg(long, default_value_t = 0)]
     max_token_offset: usize,
+    /// Files and directories containing starter code. Any matches with this code will be ignored.
+    #[arg(short, long)]
+    ignore: Vec<PathBuf>,
     /// Tokenizing strategy to use. Can be one of "bytes", "naive", or "relative".
-    #[arg(value_enum, short, long, default_value = "bytes")]
+    #[arg(value_enum, short, long, default_value = "relative")]
     tokenizing_strategy: TokenizingStrategy,
     /// Whether to ignore comments, whitespace, and newlines while tokenizing. This is only supported by the "naive" and
     /// "relative" tokenizing strategies.
-    #[arg(short, long, default_value_t = false)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     ignore_whitespace: bool,
     /// Whether to expand matches as much as possible before reporting them.
     #[arg(short, long, default_value_t = true, action = clap::ArgAction::Set)]
@@ -54,16 +57,13 @@ struct Args {
     /// Whether the JSON output should be pretty-printed.
     #[arg(short, long, default_value_t = false)]
     pretty: bool,
-    /// Output file.
-    #[arg(short, long, default_value = "./fungus-output.json")]
-    output_file: PathBuf,
     /// Similarity threshold. Pairs of projects with fewer than this number of matches will not be shown.
     #[arg(short, long, default_value_t = 5)]
     min_matches: usize,
     /// Common code threshold. If the proportion of projects containing some code snippet is greater than this value,
     /// that code will be ignored. The value must be a real number in the range (0, 1].
-    #[arg(short, long)]
-    common_code_threshold: Option<f64>,
+    #[arg(short, long, default_value_t = 0.1)]
+    common_code_threshold: f64,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -111,6 +111,13 @@ fn parse_args() -> anyhow::Result<(Args, Vec<Warning>)> {
         );
     }
 
+    if args.ignore.is_empty() {
+        warnings.push(Warning {
+            file: None,
+            message: "Results tend to be better when the assignment starter code is provided. Consider doing so using the --ignore argument.".to_owned(),
+            warn_type: WarningType::Args
+        });
+    }
     for path in args.ignore.iter() {
         if !path.exists() {
             anyhow::bail!("Ignored file or directory '{}' not found.", path.display());
@@ -144,13 +151,11 @@ fn parse_args() -> anyhow::Result<(Args, Vec<Warning>)> {
         anyhow::bail!("Guarantee threshold must be greater than or equal to noise threshold.");
     }
 
-    if let Some(c) = &args.common_code_threshold {
-        if *c <= 0.0 {
-            anyhow::bail!("Common hash threshold must be strictly positive.");
-        }
-        if *c > 1.0 {
-            anyhow::bail!("Common hash threshold must be less than or equal to one.");
-        }
+    if args.common_code_threshold < 0.0 {
+        anyhow::bail!("Common hash threshold must be non-negative.");
+    }
+    if args.common_code_threshold > 1.0 {
+        anyhow::bail!("Common hash threshold must be less than or equal to one.");
     }
 
     if args.ignore_whitespace && args.tokenizing_strategy == TokenizingStrategy::Bytes {
