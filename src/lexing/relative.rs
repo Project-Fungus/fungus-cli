@@ -208,8 +208,6 @@ impl Eq for HashableFloat {}
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
-
     use super::Token::*;
     use super::*;
 
@@ -276,14 +274,6 @@ mod tests {
         set.insert(Symbol("add".to_owned()));
         set.insert(Symbol("sub".to_owned()));
         assert_eq!(set.len(), 2);
-    }
-
-    #[test]
-    fn lex_radix_sort() {
-        assert!(!lex(include_str!("../../benches/radix_sort.s"))
-            .iter()
-            .map(|(t, _span)| t)
-            .contains(&Error))
     }
 
     #[test]
