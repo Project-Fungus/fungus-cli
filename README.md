@@ -39,7 +39,7 @@ Two tokenizers are available:
 
 ### Noise Threshold, Guarantee Threshold, and Max Token Offset
 
-As with Moss, FUNGUS accepts noise and guarantee thresholds as inputs.
+FUNGUS accepts noise and guarantee thresholds as inputs.
 - The noise threshold defines a minimum size for matches to be reported at all. Matching code snippets that have fewer than this number of tokens will not be flagged as potential plagiarism.
 - The guarantee threshold defines a minimum size beyond which matches are *guaranteed* to be reported. That is, if two project have matching code snippets that are at least as long as the guarantee threshold, then that match will always be flagged as plagiarism.
 
