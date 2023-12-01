@@ -11,12 +11,11 @@ FUNGUS is inspired by Stanford's [Measure of Software Similarity](https://theory
 FUNGUS assumes the projects to analyze are all in separate directories, each a direct child of the same root directory. For example, consider the following directory structure:
 
 ```
-submissions
-├── .DS_Store
+submissions/
 ├── project1
-│   ├── .DS_Store
-│   └── subdir
-│       ├── file1.s
+│   ├── subdir1
+│   │   └── file1.s
+│   └── subdir2
 │       └── file2.s
 ├── project2
 │   ├── code1.s
@@ -26,7 +25,7 @@ submissions
     └── file2.s
 ```
 
-If the `submissions/` directory is selected as the root, then FUNGUS will consider `project1`, `project2`, and `starter-code` to be separate projects.
+If the `submissions/` directory is selected as the root, then FUNGUS will select `project1`, `project2`, and `starter-code` as the projects to compare.
 
 ### Starter Code
 
