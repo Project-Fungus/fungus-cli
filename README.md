@@ -30,7 +30,7 @@ If the `submissions/` directory is selected as the root, then FUNGUS will consid
 
 ### Starter Code
 
-Paths to ignore (e.g., assignment starter code provided to all students) can be given as input to FUNGUS. Any code in students' projects that match this code will not be flagged as potential plagiarism. The paths to ignore can be inside the root directory (as in the example above).
+Paths to ignore (e.g., assignment starter code provided to all students) can be given as input to FUNGUS. Any code in students' projects that match this code will not be flagged as potential plagiarism. The paths to ignore can be inside the root directory (as in the example above) or outside of it.
 
 ### Tokenizer
 
