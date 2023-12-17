@@ -6,7 +6,7 @@ use std::{
 };
 use walkdir::WalkDir;
 
-use manual_analyzer::{
+use fungus_cli::{
     detect_plagiarism,
     lexing::TokenizingStrategy,
     output::{Output, Warning, WarningType},

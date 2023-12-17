@@ -1,7 +1,15 @@
 [package]
-name = "manual-analyzer"
+name = "fungus-cli"
 version = "1.0.0"
+authors = ["Gabriel Lacroix", "Kirollos Roufail", "Louis Hildebrand"]
 edition = "2021"
+description = "FUNGUS is a tool for detecting similarities between ARMv7 assembly projects, for example, for introductory software assignments."
+readme = "README.md"
+homepage = "https://github.com/Project-Fungus"
+repository = "https://github.com/Project-Fungus/fungus-cli"
+license = "MIT"
+keywords = ["plagiarism", "copy_detection", "assignments"]
+categories = ["command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
