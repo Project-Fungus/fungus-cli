@@ -32,7 +32,7 @@ jobs:
   # Based on the release workflow for hyperfine:
   # https://github.com/sharkdp/hyperfine/blob/24a0d5da1bff11567bbf307315d11cb0e10733ec/.github/workflows/CICD.yml
   build_release:
-    if: ${{ inputs.release }}
+    # if: ${{ inputs.release }}
     needs: test
     runs-on: ${{ matrix.job.os }}
     strategy:
