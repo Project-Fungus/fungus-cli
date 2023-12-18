@@ -4,6 +4,22 @@ FUNGUS is a tool for detecting similarities between ARMv7 assembly projects, for
 
 FUNGUS is inspired by Stanford's [Measure of Software Similarity](https://theory.stanford.edu/~aiken/moss/) (Moss). At its core, it uses the same algorithm, winnowing, described in [this paper](https://theory.stanford.edu/~aiken/publications/papers/sigmod03.pdf).
 
+## Installation
+
+### Binary
+
+1. Go to the [Releases page](https://github.com/Project-Fungus/fungus-cli/releases).
+2. Download the artifact for your platform.
+3. Add the command to your `PATH`.
+
+Run `fungus --version` to check that the installation was successful.
+
+### Building From Source
+
+1. Clone this repository or download the code.
+2. Ensure you have [installed Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html).
+3. Run `cargo build --release`. The binary will be placed in the `target/release/` directory.
+
 ## Key Inputs
 
 ### Root
