@@ -104,7 +104,7 @@ jobs:
           esac;
 
           # Setup paths
-          BIN_NAME="${{ needs.crate_metadata.outputs.name }}${EXE_suffix}"
+          BIN_NAME="fungus${EXE_suffix}"
           BIN_PATH="target/${{ matrix.job.target }}/release/${BIN_NAME}"
 
           # Let subsequent steps know where to find the binary
@@ -115,5 +115,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fungus-${{ matrix.job.target }}
-          path: ${{ env.BIN_PATH }}
+          path: ${{ steps.bin.outputs.BIN_PATH }}
           if-no-files-found: error
