@@ -270,6 +270,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
+name = "fungus-cli"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "clap 4.1.13",
+ "criterion",
+ "itertools",
+ "logos",
+ "pretty_assertions",
+ "relative-path",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "walkdir",
+]
+
+[[package]]
 name = "half"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -416,23 +433,6 @@ dependencies = [
  "quote",
  "regex-syntax",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "manual-analyzer"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "clap 4.1.13",
- "criterion",
- "itertools",
- "logos",
- "pretty_assertions",
- "relative-path",
- "rustc-hash",
- "serde",
- "serde_json",
- "walkdir",
 ]
 
 [[package]]

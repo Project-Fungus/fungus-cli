@@ -5,7 +5,7 @@
 //!
 //! ```rust
 //! # fn main() {
-//! use manual_analyzer::identity_hash::{IdentityHashMap, IdentityHashSet};
+//! use fungus_cli::identity_hash::{IdentityHashMap, IdentityHashSet};
 //! let mut map: IdentityHashMap<u32> = IdentityHashMap::default();
 //! map.insert(22, 44);
 //! let mut set: IdentityHashSet = IdentityHashSet::default();
