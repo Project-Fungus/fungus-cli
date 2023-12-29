@@ -1,6 +1,6 @@
 [package]
 name = "fungus-cli"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Gabriel Lacroix", "Kirollos Roufail", "Louis Hildebrand"]
 edition = "2021"
 description = "FUNGUS is a tool for detecting similarities between ARMv7 assembly projects, for example, for introductory software assignments."
