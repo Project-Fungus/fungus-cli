@@ -62,7 +62,7 @@ struct Args {
     min_matches: usize,
     /// Common code threshold. If the proportion of projects containing some code snippet is greater than this value,
     /// that code will be ignored. The value must be a real number in the range (0, 1].
-    #[arg(short, long, default_value_t = 0.1)]
+    #[arg(short, long, default_value_t = 0.0)]
     common_code_threshold: f64,
 }
 
